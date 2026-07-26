@@ -1,0 +1,14 @@
+# neo-08's OWN service (module 01: Card Issuing), on prod. Identical to
+# dev.params — a module carries no environment-specific values (the orchestrator URL is built
+# from the Cloud Map namespace in the template). The pipeline adds EnvironmentName + the
+# PINNED @sha256 images + DbEndpoint + AlbDnsName.
+ServiceName=neo-08
+Role=module
+PathPrefix=/neo-08
+ListenerRulePriority=80
+DbName=neo_08
+ServiceId=neo08
+DisplayName=Card Issuing
+Domain=card
+Team=Team 08
+MockedDependencies=card-personalisation-bureau
