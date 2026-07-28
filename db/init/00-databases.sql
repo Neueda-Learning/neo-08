@@ -21,8 +21,8 @@ CREATE DATABASE IF NOT EXISTS sidecar_db;
 -- 1. issuing_config — Card issuing configuration (insert-only, versioned)
 --    current = MAX(version)
 -- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS issuing_config;
-CREATE TABLE issuing_config (
+DROP TABLE IF EXISTS neo_08.issuing_config;
+CREATE TABLE neo_08.issuing_config (
                                 version                INT           NOT NULL AUTO_INCREMENT COMMENT 'Version number; MAX(version) is the current active version',
                                 pan_prefix             VARCHAR(16)   NOT NULL              COMMENT 'Reserved TEST PAN prefix, e.g. 999900',
                                 pan_length             INT           NOT NULL              COMMENT 'Total PAN length including Luhn check digit, default 16',
@@ -41,8 +41,8 @@ CREATE TABLE issuing_config (
 -- ---------------------------------------------------------------------------
 -- 2. card_record — Card record (core table, N:1 -> issuing_config)
 -- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS card_record;
-CREATE TABLE card_record (
+DROP TABLE IF EXISTS neo_08.card_record;
+CREATE TABLE neo_08.card_record (
                              application_id         VARCHAR(64)   NOT NULL              COMMENT 'Journey unique key; the only applicant-related field stored',
                              outcome                VARCHAR(32)   NOT NULL DEFAULT 'IN_PROGRESS' COMMENT 'ISSUED | FAILED | IN_PROGRESS',
                              reference              VARCHAR(64)   NOT NULL              COMMENT 'Human-readable case number, e.g. crd-000064',
@@ -75,8 +75,8 @@ CREATE TABLE card_record (
 -- ---------------------------------------------------------------------------
 -- 3. card_status_history — Card status history (append-only, N:1 -> card_record)
 -- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS card_status_history;
-CREATE TABLE card_status_history (
+DROP TABLE IF EXISTS neo_08.card_status_history;
+CREATE TABLE neo_08.card_status_history (
                                      id               BIGINT          NOT NULL AUTO_INCREMENT COMMENT 'Surrogate primary key',
                                      application_id   VARCHAR(64)     NOT NULL              COMMENT 'FK -> card_record.application_id',
                                      status           VARCHAR(32)     NOT NULL              COMMENT 'REQUESTED | PERSONALISED | DISPATCHED',
@@ -95,8 +95,8 @@ CREATE TABLE card_status_history (
 -- ---------------------------------------------------------------------------
 -- 4. override_log — Manual override audit log (append-only, N:1 -> card_record)
 -- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS override_log;
-CREATE TABLE override_log (
+DROP TABLE IF EXISTS neo_08.override_log;
+CREATE TABLE neo_08.override_log (
                               id               BIGINT          NOT NULL AUTO_INCREMENT COMMENT 'Surrogate primary key',
                               application_id   VARCHAR(64)     NOT NULL              COMMENT 'FK -> card_record.application_id',
                               old_outcome      VARCHAR(32)     NOT NULL              COMMENT 'Outcome before override',
@@ -114,3 +114,4 @@ CREATE TABLE override_log (
                               CONSTRAINT fk_ol_card_record
                                   FOREIGN KEY (application_id) REFERENCES card_record(application_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

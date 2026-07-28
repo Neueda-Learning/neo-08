@@ -2,60 +2,97 @@ package com.neobank.module.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.time.Instant;
+import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-/**
- * 发卡配置 — insert-only 版本化表。
- *
- * <p>{@code MAX(version)} 始终代表当前生效的配置。
- * 每行在插入时即固化，永不更新。</p>
- */
+import java.time.Instant;
+import java.util.List;
+
 @Entity
+@Immutable
 @Table(name = "issuing_config")
 public class IssuingConfig {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(
+            name = "version",
+            nullable = false,
+            updatable = false
+    )
     private Integer version;
 
-    @Column(name = "pan_prefix", length = 16, nullable = false)
+    @Column(
+            name = "pan_prefix",
+            length = 6,
+            nullable = false,
+            updatable = false
+    )
     private String panPrefix;
 
-    @Column(name = "pan_length", nullable = false)
+    @Column(
+            name = "pan_length",
+            nullable = false,
+            updatable = false
+    )
     private int panLength;
 
-    @Column(name = "delivery_countries", columnDefinition = "TEXT", nullable = false)
-    private String deliveryCountries;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(
+            name = "delivery_countries",
+            columnDefinition = "json",
+            nullable = false,
+            updatable = false
+    )
+    private List<String> deliveryCountries;
 
-    @Column(name = "required_address_fields", columnDefinition = "TEXT", nullable = false)
-    private String requiredAddressFields;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(
+            name = "required_address_fields",
+            columnDefinition = "json",
+            nullable = false,
+            updatable = false
+    )
+    private List<String> requiredAddressFields;
 
-    @Column(name = "bureau_base_url", length = 256, nullable = false)
+    @Column(
+            name = "bureau_base_url",
+            length = 256,
+            nullable = false,
+            updatable = false
+    )
     private String bureauBaseUrl;
 
-    @Column(name = "design_map", columnDefinition = "TEXT")
-    private String designMap;
-
-    @Column(name = "effective_from", nullable = false)
+    @Column(
+            name = "effective_from",
+            nullable = false,
+            updatable = false
+    )
     private Instant effectiveFrom;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
 
     protected IssuingConfig() {
         // JPA
     }
 
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
+    public IssuingConfig(
+            Integer version,
+            String panPrefix,
+            int panLength,
+            List<String> deliveryCountries,
+            List<String> requiredAddressFields,
+            String bureauBaseUrl,
+            Instant effectiveFrom) {
+
+        this.version = version;
+        this.panPrefix = panPrefix;
+        this.panLength = panLength;
+        this.deliveryCountries = List.copyOf(deliveryCountries);
+        this.requiredAddressFields =
+                List.copyOf(requiredAddressFields);
+        this.bureauBaseUrl = bureauBaseUrl;
+        this.effectiveFrom = effectiveFrom;
     }
 
     public Integer getVersion() {
@@ -70,27 +107,19 @@ public class IssuingConfig {
         return panLength;
     }
 
-    public String getDeliveryCountries() {
-        return deliveryCountries;
+    public List<String> getDeliveryCountries() {
+        return List.copyOf(deliveryCountries);
     }
 
-    public String getRequiredAddressFields() {
-        return requiredAddressFields;
+    public List<String> getRequiredAddressFields() {
+        return List.copyOf(requiredAddressFields);
     }
 
     public String getBureauBaseUrl() {
         return bureauBaseUrl;
     }
 
-    public String getDesignMap() {
-        return designMap;
-    }
-
     public Instant getEffectiveFrom() {
         return effectiveFrom;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
     }
 }
