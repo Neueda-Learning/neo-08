@@ -29,10 +29,10 @@ public class CardRecord {
     @Column(length = 64, nullable = false)
     private String reference;
 
-    @Column(name = "pan_last4", length = 4)
+    @Column(name = "pan_last4", columnDefinition = "CHAR(4)")
     private String panLast4;
 
-    @Column(name = "pan_hash", length = 64)
+    @Column(name = "pan_hash", columnDefinition = "CHAR(64)")
     private String panHash;
 
     @Column(name = "bureau_card_id", length = 64)
