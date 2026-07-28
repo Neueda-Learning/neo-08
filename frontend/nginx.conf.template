@@ -2,7 +2,7 @@
 # ${BASE_PATH}, ${BACKEND_HOST} and ${RESOLVER} are substituted; nginx runtime variables
 # like $uri and $args are not, so envsubst leaves them intact.
 #
-# ${BASE_PATH} is "" locally and "/neo-01" in the deployed stack, where every UI
+# ${BASE_PATH} is "" locally and "/neo-08" in the deployed stack, where every UI
 # shares ONE port and is told apart by its path. With it empty this file renders to
 # exactly the root-served config it has always been, so `docker compose up` is unaffected.
 # It MUST agree with the APP_BASE_PATH the bundle was built with — Vite writes asset URLs
@@ -52,11 +52,11 @@ server {
 
   # ---- the single-page app ----
   #
-  # One regex covers all three shapes: "/neo-01" (no trailing slash, which is the URL
-  # people actually paste), "/neo-01/", and "/neo-01/assets/index-abc.js". The
+  # One regex covers all three shapes: "/neo-08" (no trailing slash, which is the URL
+  # people actually paste), "/neo-08/", and "/neo-08/assets/index-abc.js". The
   # capture is the path with the prefix removed, so files are served from the image root
   # no matter what prefix they are published under. Anything that is not a real file is
-  # index.html, because the router lives in the browser.
+  # index.html so a direct visit still renders the single screen.
   location ~ ^${BASE_PATH}/?(.*)$ {
     try_files /$1 /index.html;
   }

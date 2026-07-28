@@ -35,5 +35,4 @@ export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
   listApplications: () => request('/api/v1/applications'),
-  getApplication: (id) => request(`/api/v1/applications/${id}`),
 };

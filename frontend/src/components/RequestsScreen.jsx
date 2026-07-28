@@ -16,17 +16,10 @@ import { statusTone, STATUSES, time } from '../status.js';
 const FILTERS = ['All', ...STATUSES];
 
 /**
- * Everything this module has answered.
- *
- * ⚠️ Three columns, because the placeholder table behind it has three columns. When you replace
- * `demo_showcase` with your own table, this is the screen that shows it off — the operator UI is a
- * graded deliverable, so add the columns, filters and detail views your business topic needs.
- *
- * The board follows the platform shape (design-system/DESIGN.md § "Board"): a header stating the
- * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
- * DataTable — no screen re-implements them.
+ * Safe card-issuing records, newest first. The API never exposes a full PAN;
+ * this screen renders only its already-masked representation.
  */
-export default function RequestsScreen({ requests, error, info }) {
+export default function RequestsScreen({ requests, error, info, actions }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -44,7 +37,14 @@ export default function RequestsScreen({ requests, error, info }) {
     return requests.filter((r) => {
       if (filter !== 'All' && r.status !== filter) return false;
       if (!needle) return true;
-      return r.applicationId.toLowerCase().includes(needle);
+      return [
+        r.applicationId,
+        r.reference,
+        r.productCode,
+        r.panMasked,
+        r.reasonCode,
+        r.bureauCardId,
+      ].some((value) => value?.toLowerCase().includes(needle));
     });
   }, [requests, query, filter]);
 
@@ -56,7 +56,36 @@ export default function RequestsScreen({ requests, error, info }) {
       tight: true,
       render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge>,
     },
-    { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
+    {
+      key: 'outcome',
+      header: 'Card outcome',
+      tight: true,
+      render: (r) => <Badge tone={statusTone(r.outcome)}>{r.outcome}</Badge>,
+    },
+    { key: 'productCode', header: 'Product', mono: true },
+    {
+      key: 'panMasked',
+      header: 'Card',
+      mono: true,
+      render: (r) => r.panMasked ?? '—',
+    },
+    {
+      key: 'bureauStatus',
+      header: 'Bureau',
+      tight: true,
+      render: (r) => r.bureauStatus ?? '—',
+    },
+    {
+      key: 'reasonCode',
+      header: 'Result',
+      render: (r) => (
+        <div className="card-result">
+          <span className="card-result__code">{r.reasonCode ?? 'Awaiting worker'}</span>
+          {r.comment && <span className="card-result__comment">{r.comment}</span>}
+        </div>
+      ),
+    },
+    { key: 'decidedAt', header: 'Decided (UTC)', render: (r) => time(r.decidedAt) },
   ];
 
   return (
@@ -66,12 +95,13 @@ export default function RequestsScreen({ requests, error, info }) {
         lede="everything the orchestrator has sent this module, and what it answered · newest first"
         meta={
           info
-            ? `${info.serviceId} · ${info.domain} · v${info.version}` +
+            ? `${info.team} · ${info.serviceId} · ${info.domain} · v${info.version}` +
               (info.mockedDependencies?.length
                 ? ` · mocking ${info.mockedDependencies.join(', ')}`
                 : ' · nothing mocked')
             : undefined
         }
+        actions={actions}
       />
 
       {error && (
@@ -80,15 +110,25 @@ export default function RequestsScreen({ requests, error, info }) {
         </Alert>
       )}
 
-      <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
+      <Grid cols="auto" min={160} style={{ marginBottom: 'var(--ds-space-6)' }}>
         <MetricTile label="Seen" value={requests.length} />
-        <MetricTile label="Accepted" value={counts.ACCEPTED ?? 0} tone="positive" />
+        <MetricTile label="In progress" value={counts['in-progress'] ?? 0} tone="info" />
+        <MetricTile
+          label="Issued"
+          value={requests.filter((request) => request.outcome === 'ISSUED').length}
+          tone="positive"
+        />
+        <MetricTile
+          label="Needs attention"
+          value={requests.filter((request) => request.outcome === 'FAILED').length}
+          tone="warning"
+        />
       </Grid>
 
       <Toolbar>
         <SearchInput
           grow
-          placeholder="Application id"
+          placeholder="Application, reference, product, card or reason"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search applications"
@@ -101,7 +141,7 @@ export default function RequestsScreen({ requests, error, info }) {
         rows={matches}
         total={matches.length}
         rowKey={(r) => r.applicationId}
-        footnote="newest first"
+        footnote="newest first · full card numbers and addresses are never exposed"
         empty={
           <EmptyState
             title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}

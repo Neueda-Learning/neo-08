@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
+import { AppShell, Button, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import { api } from './api.js';
 
@@ -7,28 +7,10 @@ const POLL_MS = 2000;
 const HEALTH_MS = 10000;
 
 /**
- * The screens in the side menu.
- *
- * ⚠️ One real screen and three placeholders — the placeholders are there so the menu shows you
- * where your own screens go, and they are `disabled` so nobody clicks into nothing. Replace them
- * with what your business topic actually needs; the operator UI is a graded deliverable, and a
- * single read-only list is not one.
- */
-const SCREENS = [
-  { id: 'applications', label: 'Applications' },
-  { id: 'cases', label: 'Cases', hint: 'your own table', disabled: true },
-  { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
-  { id: 'settings', label: 'Settings', hint: 'reference data', disabled: true },
-];
-
-/**
- * A sidebar rather than a top bar: this app is expected to grow more screens than a row of tabs
- * holds, and the menu is where a team plans that growth. The identity box above it is the only
- * place the app says who it belongs to — its values come from `/info`, so the same image reads
- * "Team 07" once SERVICE_TEAM says so.
+ * One read-only operator screen. Applications arrive only from the orchestrator;
+ * this UI observes the module and never creates work or bypasses the callback flow.
  */
 export default function App() {
-  const [screen, setScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
@@ -50,12 +32,10 @@ export default function App() {
   }, [reload]);
 
   const refreshHealth = useCallback(async () => {
-    try {
-      const [h, i] = await Promise.all([api.health(), api.info()]);
-      setHealth(h);
-      setInfo(i);
-    } catch {
-      setHealth(null);
+    const [healthResult, infoResult] = await Promise.allSettled([api.health(), api.info()]);
+    setHealth(healthResult.status === 'fulfilled' ? healthResult.value : null);
+    if (infoResult.status === 'fulfilled') {
+      setInfo(infoResult.value);
     }
   }, []);
 
@@ -65,22 +45,27 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshHealth]);
 
-  const up = !error && health?.status === 'UP';
+  useEffect(() => {
+    document.title = info ? `${info.serviceId} · ${info.service}` : 'Card Issuing';
+  }, [info]);
+
+  const healthKnown = health != null;
+  const up = health?.status === 'UP';
+  const healthLabel = healthKnown ? (up ? 'Up' : 'Down') : 'Unavailable';
 
   return (
     <AppShell
-      side={
-        <>
-          <SideBrand
-            brand={info?.team ?? 'Team'}
-            product={info?.service ?? 'Module'}
-            meta={info ? `${info.serviceId} · ${info.domain}` : undefined}
-          />
-          <SideNav items={SCREENS} active={screen} onSelect={setScreen} />
-          {/* Health and refresh lived in the top bar; with the bar gone they belong beside the
-              menu rather than inside it — a menu item that is not a screen is a trap. */}
-          <div className="app-side-status">
-            <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
+      footer="One of ten modules · applications arrive from the orchestrator, never from this UI"
+    >
+      <RequestsScreen
+        requests={requests}
+        error={error}
+        info={info}
+        actions={
+          <div className="app-actions">
+            <StatusPill tone={healthKnown ? (up ? 'positive' : 'negative') : 'neutral'}>
+              Service {healthLabel}
+            </StatusPill>
             <Button
               variant="ghost"
               size="sm"
@@ -92,13 +77,8 @@ export default function App() {
               Refresh
             </Button>
           </div>
-        </>
-      }
-      footer="One of ten modules · applications arrive from the orchestrator, never from this UI"
-    >
-      {screen === 'applications' && (
-        <RequestsScreen requests={requests} error={error} info={info} />
-      )}
+        }
+      />
     </AppShell>
   );
 }

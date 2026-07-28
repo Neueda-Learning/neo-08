@@ -2,20 +2,35 @@
  * from the design system's custom properties; this file adds no new values, only
  * the layouts the system has no component for.
  *
- * If something here grows into a pattern three screens need, it belongs in the
- * design system (DESIGN.md § "When the system does not have what you need") — which
- * is exactly how SideNav and SideBrand got there.
+ * If something here grows into a shared pattern, it belongs in the design
+ * system (DESIGN.md § "When the system does not have what you need").
  *
- * It used to hold rules for a scenario picker and an expandable row detail. Both
- * components are gone (the picker moved to the sidecar, the detail went with the
- * placeholder table's three columns), so their rules went with them: CSS for a
- * component that no longer exists is the hardest kind of dead code to notice. */
+ * The UI is deliberately one read-only screen; only its compact result cell and
+ * header actions need app-specific layout. */
 
-/* Health and refresh, under the side menu. Not menu items — a row in a menu that is
- * not a screen is a trap — and not a top bar either, because there is no longer one. */
-.app-side-status {
+/* Live service state and the one manual refresh action belong together. */
+.app-actions {
   display: flex;
   align-items: center;
   gap: var(--ds-space-3);
-  padding: 0 var(--ds-space-2);
+}
+
+.card-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  min-width: 240px;
+  max-width: 440px;
+}
+
+.card-result__code {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-text);
+}
+
+.card-result__comment {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-leading-snug);
 }
