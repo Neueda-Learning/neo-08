@@ -1,0 +1,269 @@
+# UC-00 durable intake record.
+#
+# Only application_id comes from the orchestrator envelope. The remaining columns are
+# module-owned processing metadata, so no application payload, applicant data or address can
+# be persisted here.
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-card-record
+      author: neo-08
+      changes:
+        - createTable:
+            tableName: issuing_config
+            remarks: "Versioned PAN range and delivery configuration"
+            columns:
+              - column:
+                  name: version
+                  type: INT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: pan_prefix
+                  type: VARCHAR(16)
+                  remarks: "Reserved test PAN prefix"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pan_length
+                  type: INT
+                  remarks: "Total PAN length including the Luhn check digit"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: delivery_countries
+                  type: JSON
+                  remarks: "Countries supported by the card bureau"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: required_address_fields
+                  type: JSON
+                  remarks: "Required fields for an alternative delivery address"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: bureau_base_url
+                  type: VARCHAR(256)
+                  remarks: "Card personalisation bureau base URL"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effective_from
+                  type: TIMESTAMP
+                  remarks: "When this immutable configuration version becomes effective"
+                  constraints:
+                    nullable: false
+        - createTable:
+            tableName: card_record
+            remarks: "One durable, idempotent card-issuing case per application"
+            columns:
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  remarks: "Journey key from the request envelope; the only persisted envelope field"
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: outcome
+                  type: VARCHAR(32)
+                  defaultValue: IN_PROGRESS
+                  remarks: "Case outcome; every intake row starts IN_PROGRESS"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reference
+                  type: VARCHAR(64)
+                  remarks: "Module-generated human-facing case reference"
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_card_record_reference
+              - column:
+                  name: pan_last4
+                  type: CHAR(4)
+                  remarks: "Last four PAN digits; null until the card is issued"
+              - column:
+                  name: pan_hash
+                  type: CHAR(64)
+                  remarks: "Salted SHA-256 PAN hash; the full PAN is never persisted"
+              - column:
+                  name: bureau_card_id
+                  type: VARCHAR(64)
+                  remarks: "Card personalisation bureau identifier; null before issue"
+              - column:
+                  name: bureau_status
+                  type: VARCHAR(32)
+                  remarks: "REQUESTED, PERSONALISED or DISPATCHED; null before bureau hand-off"
+              - column:
+                  name: dispatch_ref
+                  type: VARCHAR(64)
+                  remarks: "Postal tracking reference; null until dispatched"
+              - column:
+                  name: account_id
+                  type: VARCHAR(64)
+                  remarks: "Module 7 account identifier; populated by a later use case"
+              - column:
+                  name: product_code
+                  type: VARCHAR(64)
+                  remarks: "Product used for card design and tier; populated after UC-00 intake"
+              - column:
+                  name: manual_address
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  remarks: "Whether an operator supplied a corrected delivery address"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: issuing_config_version
+                  type: INT
+                  remarks: "Issuing configuration version pinned when the card is issued"
+              - column:
+                  name: issued_at
+                  type: TIMESTAMP
+                  remarks: "When PAN generation and bureau instruction completed"
+        - addForeignKeyConstraint:
+            baseTableName: card_record
+            baseColumnNames: issuing_config_version
+            referencedTableName: issuing_config
+            referencedColumnNames: version
+            constraintName: fk_card_record_config
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_outcome
+            columns:
+              - column:
+                  name: outcome
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_bureau_status
+            columns:
+              - column:
+                  name: bureau_status
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_product_code
+            columns:
+              - column:
+                  name: product_code
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_issued_at
+            columns:
+              - column:
+                  name: issued_at
+        - createTable:
+            tableName: card_status_history
+            remarks: "Append-only bureau lifecycle observations"
+            columns:
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  remarks: "Card case whose bureau transition was observed"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  remarks: "Observed bureau status"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source
+                  type: VARCHAR(16)
+                  remarks: "ISSUE for the initial instruction or POLL for later observations"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: observed_at
+                  type: TIMESTAMP
+                  remarks: "When this module observed the transition"
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: card_status_history
+            baseColumnNames: application_id
+            referencedTableName: card_record
+            referencedColumnNames: application_id
+            constraintName: fk_card_status_history_record
+        - createIndex:
+            tableName: card_status_history
+            indexName: idx_card_status_history_application
+            columns:
+              - column:
+                  name: application_id
+        - createIndex:
+            tableName: card_status_history
+            indexName: idx_card_status_history_observed
+            columns:
+              - column:
+                  name: observed_at
+        - createTable:
+            tableName: override_log
+            remarks: "Append-only audit trail for manual outcome overrides"
+            columns:
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  remarks: "Card case whose outcome was overridden"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: old_outcome
+                  type: VARCHAR(32)
+                  remarks: "Outcome before the override"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: new_outcome
+                  type: VARCHAR(32)
+                  remarks: "Outcome asserted by the operator"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: VARCHAR(512)
+                  remarks: "Mandatory override justification"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: operator
+                  type: VARCHAR(64)
+                  remarks: "Operator who performed the override"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: overridden_at
+                  type: TIMESTAMP
+                  remarks: "When the override occurred"
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: override_log
+            baseColumnNames: application_id
+            referencedTableName: card_record
+            referencedColumnNames: application_id
+            constraintName: fk_override_log_record
+        - createIndex:
+            tableName: override_log
+            indexName: idx_override_log_application
+            columns:
+              - column:
+                  name: application_id
+        - createIndex:
+            tableName: override_log
+            indexName: idx_override_log_overridden
+            columns:
+              - column:
+                  name: overridden_at
+      rollback:
+        - dropTable:
+            tableName: override_log
+        - dropTable:
+            tableName: card_status_history
+        - dropTable:
+            tableName: card_record
+        - dropTable:
+            tableName: issuing_config
