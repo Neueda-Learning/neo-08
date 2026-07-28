@@ -24,4 +24,9 @@ service:
   team: Team 08
   domain: card
   orchestrator-url: http://localhost:9
-  mocked-dependencies: id-verification-provider, sanctions-list
+  mocked-dependencies: card-personalisation-bureau
+
+card:
+  pan-hash-salt: integration-test-salt
+  processing-lease: 2m
+  recovery-interval-ms: 3600000

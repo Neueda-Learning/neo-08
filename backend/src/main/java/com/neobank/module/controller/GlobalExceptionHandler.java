@@ -1,5 +1,6 @@
 package com.neobank.module.controller;
 
+import com.neobank.module.service.ApplicationWorkerUnavailableException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -54,6 +55,21 @@ public class GlobalExceptionHandler {
         int newline = message == null ? -1 : message.indexOf('\n');
         return error(HttpStatus.BAD_REQUEST,
                 "malformed request body: " + (newline > 0 ? message.substring(0, newline) : message));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        return error(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    /**
+     * A {@code 202} is a promise that work was handed off. If the executor did
+     * not accept it, return a retryable status instead of making a false promise.
+     */
+    @ExceptionHandler(ApplicationWorkerUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleWorkerUnavailable(
+            ApplicationWorkerUnavailableException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

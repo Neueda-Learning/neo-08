@@ -42,7 +42,7 @@ Parameters:
     Type: Number
     Description: >-
       ALB rules evaluate lowest-first, and the number is UNIQUE across every service on the
-      shared listener — a collision fails the second deploy. Reserved: neo-08=10, neo-02=20,
+      shared listener — a collision fails the second deploy. Reserved: neo-01=10, neo-02=20,
       … neo-10=100; orchestrator=50000 (its /* catch-all must be checked last, or it
       swallows every module's UI).
 
@@ -294,16 +294,23 @@ Resources:
                   - "http://orchestrator.${NsName}:8080"
                   - NsName: !ImportValue
                       Fn::Sub: "neobank-${EnvironmentName}-NamespaceName"
-              # No decision knobs: a module's answer comes from the code a team writes in
-              # ApplicationService, not from a weight set out here. The skeleton's placeholder
-              # accepts everything, so an unmodified module completes every journey — which
-              # means one that does NOT complete is genuinely broken, not unlucky.
+              # No decision knobs: this module's catalogue, delivery and issuing
+              # rules live in ApplicationService and versioned issuing_config data,
+              # not in per-environment weights.
               - { Name: SERVICE_DOMAIN, Value: !Ref Domain }
               - { Name: SERVICE_TEAM, Value: !Ref Team }
               - { Name: MOCKED_DEPENDENCIES, Value: !Ref MockedDependencies }
               - { Name: CORS_ALLOWED_ORIGIN_PATTERNS, Value: !Sub "http://${AlbDnsName},http://localhost:*" }
           Secrets:
             - Name: DB_PASSWORD
+              ValueFrom: !Sub
+                - "${SecretArn}:password::"
+                - SecretArn: !ImportValue
+                    Fn::Sub: "neobank-${EnvironmentName}-DbSecretArn"
+            # Reuse secret material already available to the task execution role,
+            # under a purpose-specific environment name. It is never in the image,
+            # template parameters or source-controlled environment files.
+            - Name: PAN_HASH_SALT
               ValueFrom: !Sub
                 - "${SecretArn}:password::"
                 - SecretArn: !ImportValue

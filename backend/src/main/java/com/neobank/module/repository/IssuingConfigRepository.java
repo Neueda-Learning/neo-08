@@ -6,6 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface IssuingConfigRepository extends JpaRepository<IssuingConfig, Integer> {
 
-    /** 当前生效配置 = MAX(version)。 */
+    /** Current policy is the highest immutable version. */
     Optional<IssuingConfig> findTopByOrderByVersionDesc();
 }

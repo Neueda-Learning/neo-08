@@ -1,0 +1,266 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-card-domain-tables
+      author: neo-08
+      changes:
+        # Issuing policy is versioned data. Cards pin the version they used so a
+        # later policy change never rewrites the explanation for an older card.
+        - createTable:
+            tableName: issuing_config
+            columns:
+              - column:
+                  name: version
+                  type: INT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: pan_prefix
+                  type: VARCHAR(15)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pan_length
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: delivery_countries
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: allowed_product_codes
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: required_address_fields
+                  type: VARCHAR(512)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effective_from
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - insert:
+            tableName: issuing_config
+            columns:
+              - column:
+                  name: version
+                  valueNumeric: 1
+              - column:
+                  name: pan_prefix
+                  value: "999900"
+              - column:
+                  name: pan_length
+                  valueNumeric: 16
+              - column:
+                  name: delivery_countries
+                  value: '["GB","IE"]'
+              - column:
+                  name: allowed_product_codes
+                  value: '["CREDIT_CARD_STANDARD","CREDIT_CARD_REWARDS","CREDIT_CARD_STUDENT"]'
+              - column:
+                  name: required_address_fields
+                  value: '["line1","city","postcode","country"]'
+              - column:
+                  name: effective_from
+                  valueDate: "2026-01-01T00:00:00"
+
+        # One row is inserted synchronously before the 202 acknowledgement.
+        # Only the orchestrator's application id exists at that checkpoint;
+        # every other column below is operational card data written by the worker.
+        - createTable:
+            tableName: card_record
+            columns:
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: outcome
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decision_status
+                  type: VARCHAR(32)
+              - column:
+                  name: reason_code
+                  type: VARCHAR(64)
+              - column:
+                  name: decision_comment
+                  type: VARCHAR(512)
+              - column:
+                  name: reference
+                  type: VARCHAR(64)
+              - column:
+                  name: pan_last4
+                  type: CHAR(4)
+              - column:
+                  name: pan_hash
+                  type: CHAR(64)
+              - column:
+                  name: bureau_card_id
+                  type: VARCHAR(64)
+              - column:
+                  name: bureau_status
+                  type: VARCHAR(32)
+              - column:
+                  name: dispatch_ref
+                  type: VARCHAR(64)
+              - column:
+                  name: product_code
+                  type: VARCHAR(64)
+              - column:
+                  name: issuing_config_version
+                  type: INT
+              - column:
+                  name: processing_started_at
+                  type: TIMESTAMP
+              - column:
+                  name: processing_token
+                  type: VARCHAR(36)
+              - column:
+                  name: callback_delivered_at
+                  type: TIMESTAMP
+              - column:
+                  name: callback_claimed_at
+                  type: TIMESTAMP
+              - column:
+                  name: callback_claim_token
+                  type: VARCHAR(36)
+              - column:
+                  name: callback_attempts
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decided_at
+                  type: TIMESTAMP
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: card_record
+            baseColumnNames: issuing_config_version
+            constraintName: fk_card_record_issuing_config
+            referencedTableName: issuing_config
+            referencedColumnNames: version
+
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_created
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: application_id
+
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_outcome
+            columns:
+              - column:
+                  name: outcome
+
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_callback
+            columns:
+              - column:
+                  name: decision_status
+              - column:
+                  name: callback_delivered_at
+
+        - createIndex:
+            tableName: card_record
+            indexName: uk_card_record_pan_hash
+            unique: true
+            columns:
+              - column:
+                  name: pan_hash
+
+        # The first REQUESTED observation is written with the issue decision.
+        # The table is append-only so a future bureau poller can add observed
+        # transitions without mutating history.
+        - createTable:
+            tableName: card_status_history
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dispatch_ref
+                  type: VARCHAR(64)
+              - column:
+                  name: observed_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: card_status_history
+            baseColumnNames: application_id
+            constraintName: fk_card_status_history_record
+            referencedTableName: card_record
+            referencedColumnNames: application_id
+            onDelete: CASCADE
+
+        - createIndex:
+            tableName: card_status_history
+            indexName: idx_card_status_history_application
+            columns:
+              - column:
+                  name: application_id
+              - column:
+                  name: observed_at
+      rollback:
+        - dropTable:
+            tableName: card_status_history
+        - dropTable:
+            tableName: card_record
+        - dropTable:
+            tableName: issuing_config

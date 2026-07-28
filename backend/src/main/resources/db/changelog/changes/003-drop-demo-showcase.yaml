@@ -1,0 +1,42 @@
+# The skeleton table was applied as change set 001, so replacing it requires a
+# new drop change set. Editing 001 would break every database that already ran it.
+databaseChangeLog:
+  - changeSet:
+      id: 003-drop-demo-showcase
+      author: neo-08
+      changes:
+        - dropTable:
+            tableName: demo_showcase
+      rollback:
+        - createTable:
+            tableName: demo_showcase
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: demo_showcase
+            indexName: idx_demo_showcase_application
+            columns:
+              - column:
+                  name: application_id

@@ -41,8 +41,18 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-apppass}
       SERVICE_ID: ${SERVICE_ID:-neo08}
       SERVICE_NAME: ${SERVICE_NAME:-Card Issuing}
+      SERVICE_TEAM: ${SERVICE_TEAM:-Team 08}
       SERVICE_DOMAIN: ${SERVICE_DOMAIN:-card}
       MOCKED_DEPENDENCIES: ${MOCKED_DEPENDENCIES:-card-personalisation-bureau}
+      WORKER_POOL_SIZE: ${WORKER_POOL_SIZE:-8}
+      WORKER_QUEUE_CAPACITY: ${WORKER_QUEUE_CAPACITY:-32}
+      # Local-only default. Deployed tasks receive secret material from the
+      # platform secret store instead of baking it into the image.
+      PAN_HASH_SALT: ${PAN_HASH_SALT:-neo08-local-development-only}
+      CARD_PROCESSING_LEASE: ${CARD_PROCESSING_LEASE:-2m}
+      CARD_RECOVERY_INTERVAL_MS: ${CARD_RECOVERY_INTERVAL_MS:-30000}
+      CARD_CALLBACK_LEASE: ${CARD_CALLBACK_LEASE:-30s}
+      CARD_CALLBACK_RETRY_INTERVAL_MS: ${CARD_CALLBACK_RETRY_INTERVAL_MS:-10000}
       # The sidecar plays the orchestrator here, so callbacks have somewhere real to land and
       # you can see BOTH halves of the contract. Point this at http://orchestrator:8080 to talk
       # to the real one instead — nothing else in the module changes.

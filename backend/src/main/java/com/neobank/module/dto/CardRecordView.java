@@ -4,28 +4,44 @@ import com.neobank.module.model.CardRecord;
 import java.time.Instant;
 
 /**
- * {@code GET /api/v1/applications} 返回的展示视图。
- *
- * <p>此模块自己 UI 读取的字段。与之前的 {@code DemoShowcaseView} 不同，
- * 这里没有 {@code status} 字段 — 返回字段是 {@code outcome}（卡片生命周期）。</p>
+ * Safe operator view of a card case. The full PAN cannot leak through this DTO
+ * because the entity itself stores only its last four digits and digest.
  */
 public record CardRecordView(
         String applicationId,
+        String status,
         String outcome,
+        String reasonCode,
         String reference,
-        String panLast4,
+        String panMasked,
+        String bureauCardId,
+        String bureauStatus,
+        String dispatchRef,
         String productCode,
-        String accountId,
-        Instant createdAt) {
+        Integer issuingConfigVersion,
+        String comment,
+        Instant createdAt,
+        Instant decidedAt) {
 
     public static CardRecordView of(CardRecord row) {
         return new CardRecordView(
                 row.getApplicationId(),
-                row.getOutcome(),
+                row.status(),
+                row.getOutcome().name(),
+                row.getReasonCode(),
                 row.getReference(),
-                row.getPanLast4(),
+                mask(row.getPanLast4()),
+                row.getBureauCardId(),
+                row.getBureauStatus() == null ? null : row.getBureauStatus().name(),
+                row.getDispatchRef(),
                 row.getProductCode(),
-                row.getAccountId(),
-                row.getCreatedAt());
+                row.getIssuingConfigVersion(),
+                row.getComment(),
+                row.getCreatedAt(),
+                row.getDecidedAt());
+    }
+
+    private static String mask(String lastFour) {
+        return lastFour == null ? null : "**** **** **** " + lastFour;
     }
 }

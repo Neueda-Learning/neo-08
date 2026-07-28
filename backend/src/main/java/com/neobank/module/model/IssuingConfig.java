@@ -2,44 +2,39 @@ package com.neobank.module.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
 /**
- * 发卡配置 — insert-only 版本化表。
+ * Insert-only issuing policy. The current policy is the highest version, and
+ * every completed card pins the version it used.
  *
- * <p>{@code MAX(version)} 始终代表当前生效的配置。
- * 每行在插入时即固化，永不更新。</p>
+ * <p>The list fields are stored as JSON text so the database remains easy
+ * to inspect while the Java service can validate them strictly.</p>
  */
 @Entity
 @Table(name = "issuing_config")
 public class IssuingConfig {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer version;
 
-    @Column(name = "pan_prefix", length = 16, nullable = false)
+    @Column(name = "pan_prefix", length = 15, nullable = false)
     private String panPrefix;
 
     @Column(name = "pan_length", nullable = false)
     private int panLength;
 
-    @Column(name = "delivery_countries", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "delivery_countries", length = 512, nullable = false)
     private String deliveryCountries;
 
-    @Column(name = "required_address_fields", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "allowed_product_codes", length = 512, nullable = false)
+    private String allowedProductCodes;
+
+    @Column(name = "required_address_fields", length = 512, nullable = false)
     private String requiredAddressFields;
-
-    @Column(name = "bureau_base_url", length = 256, nullable = false)
-    private String bureauBaseUrl;
-
-    @Column(name = "design_map", columnDefinition = "TEXT")
-    private String designMap;
 
     @Column(name = "effective_from", nullable = false)
     private Instant effectiveFrom;
@@ -49,6 +44,23 @@ public class IssuingConfig {
 
     protected IssuingConfig() {
         // JPA
+    }
+
+    public IssuingConfig(
+            Integer version,
+            String panPrefix,
+            int panLength,
+            String deliveryCountries,
+            String allowedProductCodes,
+            String requiredAddressFields,
+            Instant effectiveFrom) {
+        this.version = version;
+        this.panPrefix = panPrefix;
+        this.panLength = panLength;
+        this.deliveryCountries = deliveryCountries;
+        this.allowedProductCodes = allowedProductCodes;
+        this.requiredAddressFields = requiredAddressFields;
+        this.effectiveFrom = effectiveFrom;
     }
 
     @PrePersist
@@ -74,16 +86,12 @@ public class IssuingConfig {
         return deliveryCountries;
     }
 
+    public String getAllowedProductCodes() {
+        return allowedProductCodes;
+    }
+
     public String getRequiredAddressFields() {
         return requiredAddressFields;
-    }
-
-    public String getBureauBaseUrl() {
-        return bureauBaseUrl;
-    }
-
-    public String getDesignMap() {
-        return designMap;
     }
 
     public Instant getEffectiveFrom() {

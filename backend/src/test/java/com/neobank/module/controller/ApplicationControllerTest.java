@@ -2,7 +2,10 @@ package com.neobank.module.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
+import com.neobank.module.service.ApplicationWorkerUnavailableException;
+import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +63,8 @@ class ApplicationControllerTest {
                 .andExpect(jsonPath("$.status").value("in-progress"))
                 .andExpect(jsonPath("$.applicationId").value("SIM-01"))
                 .andExpect(jsonPath("$.serviceId").value("neo08"))
-                .andExpect(jsonPath("$.command").value("process-application"));
+                .andExpect(jsonPath("$.command").value("process-application"))
+                .andExpect(jsonPath("$.*", hasSize(4)));
 
         ArgumentCaptor<ApplicationRequest> sent = ArgumentCaptor.forClass(ApplicationRequest.class);
         verify(applications).processApplicationAsync(sent.capture());
@@ -81,6 +87,23 @@ class ApplicationControllerTest {
                 .andExpect(jsonPath("$.message").value(containsString("applicationId")));
 
         verifyNoInteractions(applications);
+    }
+
+    @Test
+    void acceptsAnEnvelopeWithNoCommandAndEchoesNull() throws Exception {
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"applicationId":"SIM-01","application":{"channel":"WEB"}}
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("in-progress"))
+                .andExpect(jsonPath("$.applicationId").value("SIM-01"))
+                .andExpect(jsonPath("$.serviceId").value("neo08"))
+                .andExpect(jsonPath("$.command").value(nullValue()))
+                .andExpect(jsonPath("$.*", hasSize(4)));
+
+        verify(applications).processApplicationAsync(any(ApplicationRequest.class));
     }
 
     @Test
@@ -146,5 +169,25 @@ class ApplicationControllerTest {
         ArgumentCaptor<ApplicationRequest> sent = ArgumentCaptor.forClass(ApplicationRequest.class);
         verify(applications).processApplicationAsync(sent.capture());
         assertThat(sent.getValue().application().applicant().fullName()).isEqualTo("Maria Nowak");
+    }
+
+    @Test
+    void doesNotReturn202WhenNoWorkerAcceptedTheHandOff() throws Exception {
+        doThrow(new ApplicationWorkerUnavailableException(
+                        new RejectedExecutionException("pool stopped")))
+                .when(applications)
+                .processApplicationAsync(any(ApplicationRequest.class));
+
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"applicationId":"SIM-BUSY",
+                                 "command":"process-application",
+                                 "application":{"channel":"WEB"}}
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message")
+                        .value("Card issuing is temporarily unavailable; retry the application."));
     }
 }

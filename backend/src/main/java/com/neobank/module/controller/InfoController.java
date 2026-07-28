@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>{@code mockedDependencies} is the machine-readable half of the "what has been mocked"
  * register every team must deliver: list the external systems you stand in for
- * ({@code MOCKED_DEPENDENCIES=id-verification-provider,sanctions-list}) and the answer is
+ * ({@code MOCKED_DEPENDENCIES=card-personalisation-bureau}) and the answer is
  * always current, because it is configuration rather than a paragraph in a document that
  * goes stale. An empty list is a claim that nothing is mocked — make sure that is true.</p>
  */

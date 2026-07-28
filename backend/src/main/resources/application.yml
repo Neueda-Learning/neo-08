@@ -52,6 +52,13 @@ spring:
       thread-name-prefix: module-worker-
       pool:
         core-size: ${WORKER_POOL_SIZE:8}
+        max-size: ${WORKER_POOL_SIZE:8}
+        # Bounded so overload is reported as retryable 503 instead of letting a
+        # request sit behind an effectively infinite in-memory queue.
+        queue-capacity: ${WORKER_QUEUE_CAPACITY:32}
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
 
 # Who this service is and how it behaves. Every value is env-overridable, which is how
 # one image serves as all ten services in the system compose.
@@ -65,7 +72,7 @@ service:
   # agreement / account / card / support / analytics. Reported on /info.
   domain: ${SERVICE_DOMAIN:card}
   version: 0.1.0-SNAPSHOT
-  # Where to POST the decision callback. Three things can be listening there:
+  # Base URL for the PUT decision callback. Three things can be listening there:
   #   http://sidecar:8080        the mock orchestrator in this repo's compose (the default there)
   #   http://localhost:9000      that same sidecar, from a module you run in your IDE (this default)
   #   http://orchestrator:8080   the REAL orchestrator, in the neo-00 system stack
@@ -75,6 +82,20 @@ service:
   # served live on /info so it cannot go stale the way a paragraph in a document does. Empty
   # means you are claiming nothing is mocked.
   mocked-dependencies: ${MOCKED_DEPENDENCIES:card-personalisation-bureau}
+
+card:
+  # Secret material for deterministic retry-safe test PANs and their stored
+  # digests. Managed runtimes inject it; the source fallback is local-only.
+  pan-hash-salt: ${PAN_HASH_SALT:${DB_PASSWORD:neo08-test-range-local-salt}}
+  # A duplicate may take over work only after the previous worker's lease has
+  # expired. The recovery scan releases abandoned ownership for a safe resend;
+  # it never creates an outcome without the original request payload.
+  processing-lease: ${CARD_PROCESSING_LEASE:2m}
+  recovery-interval-ms: ${CARD_RECOVERY_INTERVAL_MS:30000}
+  # Terminal decisions form a PII-free outbox. A dispatcher that disappears
+  # before recording a 2xx response loses this lease and the PUT is retried.
+  callback-lease: ${CARD_CALLBACK_LEASE:30s}
+  callback-retry-interval-ms: ${CARD_CALLBACK_RETRY_INTERVAL_MS:10000}
 
 cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}

@@ -40,10 +40,9 @@ DB_PASSWORD="${DB_PASSWORD:-apppass}"
 # The tables to empty, children first — that ordering is the habit that survives someone
 # adding a foreign key later.
 #
-# ⚠️ KEEP THIS IN STEP WITH YOUR SCHEMA. When you replace demo_showcase with your own tables
-# (see model/DemoShowcase.java), list them here. A name left behind here fails the truncate with
-# "table doesn't exist", which is a confusing way to find out your cleanup script went stale.
-TABLES="demo_showcase"
+# Configuration is insert-only policy history, not board data, so a normal reset
+# deliberately keeps issuing_config v1. Runtime tables are listed children first.
+TABLES="card_status_history card_record"
 
 die() { echo "error: $*" >&2; exit 1; }
 

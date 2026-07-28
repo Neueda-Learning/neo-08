@@ -1,6 +1,6 @@
 package com.neobank.module.controller;
 
-import com.neobank.module.dto.DemoShowcaseView;
+import com.neobank.module.dto.CardRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
 import jakarta.validation.Valid;
@@ -65,9 +65,9 @@ public class ApplicationController {
      * {@code ApplicationControllerTest} pins all four fields.
      *
      * <p><b>{@code LinkedHashMap}, not {@code Map.of}.</b> {@code Map.of} throws on a null value,
-     * and {@code command} is not a validated field — an envelope without one is legal and would
-     * turn into a {@code 500}. This keeps field order for readability and serialises an absent
-     * command as JSON {@code null}, which is what the record it replaced did.</p>
+     * and {@code command} is not the request identity — an envelope without one is still accepted.
+     * This keeps field order for readability and serialises an absent command as JSON
+     * {@code null}, which is what the fixed acknowledgement requires.</p>
      */
     private Map<String, Object> ack(ApplicationRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -83,7 +83,7 @@ public class ApplicationController {
      * orchestrator never calls it.
      */
     @GetMapping
-    public List<DemoShowcaseView> list() {
+    public List<CardRecordView> list() {
         return applications.findAll();
     }
 }
