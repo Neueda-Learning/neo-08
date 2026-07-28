@@ -9,7 +9,13 @@
 -- the same rule even though it is only a development tool.
 CREATE DATABASE IF NOT EXISTS neo_08;
 CREATE DATABASE IF NOT EXISTS sidecar_db;
-
+-- ============================================================================
+-- Module 08 · Card Issuing — Complete Table Schema DDL
+--
+-- Based on UC-00 through UC-10 from w3-docs/module-08-card-issuing-docs/
+-- Target database: neo_08 (MySQL 8.4)
+-- Production schema managed by Liquibase; this file is for architecture review
+-- ============================================================================
 
 -- ---------------------------------------------------------------------------
 -- 1. issuing_config — Card issuing configuration (insert-only, versioned)
@@ -23,7 +29,7 @@ CREATE TABLE issuing_config (
                                 delivery_countries     JSON          NOT NULL              COMMENT 'Countries the bureau can ship to, e.g. ["GB","IE"]',
                                 required_address_fields JSON         NOT NULL              COMMENT 'Required fields for alternate address, e.g. ["line1","city","postcode","country"]',
                                 bureau_base_url        VARCHAR(256)  NOT NULL              COMMENT 'Mock card personalisation bureau endpoint',
-                                design_map             JSON              NULL              COMMENT '(UC-09 candidate) productCode -> {designCode, tier} mapping',
+                                design_map             JSON              NULL              COMMENT '(UC-09) productCode -> {designCode, tier} mapping',
                                 effective_from         TIMESTAMP     NOT NULL              COMMENT 'When this version takes effect',
                                 created_at             TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Row creation timestamp',
 
@@ -43,15 +49,14 @@ CREATE TABLE card_record (
                              pan_last4              CHAR(4)           NULL              COMMENT 'Last 4 PAN digits (physically cannot store more)',
                              pan_hash               CHAR(64)          NULL              COMMENT 'Salted SHA-256 of full PAN; plaintext never stored',
                              bureau_card_id         VARCHAR(64)       NULL              COMMENT 'Bureau card ID, e.g. bur-77103',
-                             bureau_status          VARCHAR(32)   NOT NULL DEFAULT 'REQUESTED' COMMENT 'REQUESTED | PERSONALISED | DISPATCHED',
+                             bureau_status          VARCHAR(32)       NULL              COMMENT 'REQUESTED | PERSONALISED | DISPATCHED; NULL when bureau not yet called',
                              dispatch_ref           VARCHAR(64)       NULL              COMMENT 'Postal tracking number, e.g. RM-2214-9915',
                              account_id             VARCHAR(64)       NULL              COMMENT 'Module 7 linked account ID, e.g. acc-000123',
                              product_code           VARCHAR(64)   NOT NULL              COMMENT 'Product code, e.g. CREDIT_CARD_REWARDS',
                              manual_address         TINYINT(1)    NOT NULL DEFAULT 0    COMMENT 'Whether an operator corrected the address',
                              issuing_config_version INT           NOT NULL              COMMENT 'FK -> issuing_config.version; permanently pinned at issue time',
-                             design_code            VARCHAR(32)       NULL              COMMENT '(UC-09 candidate) Card design code, e.g. GOLD',
-                             tier                   VARCHAR(32)       NULL              COMMENT '(UC-09 candidate) Card tier',
-                             pin_hash               CHAR(64)          NULL              COMMENT '(UC-10 candidate) Salted SHA-256 PIN hash',
+                             design_code            VARCHAR(32)       NULL              COMMENT '(UC-09) Card design code, e.g. GOLD',
+                             tier                   VARCHAR(32)       NULL              COMMENT '(UC-09) Card tier',
                              issued_at              TIMESTAMP         NULL              COMMENT 'Issue completion time (PAN generated + bureau instruction sent)',
                              created_at             TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Row creation timestamp',
                              updated_at             TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Row last update timestamp',
@@ -74,7 +79,7 @@ DROP TABLE IF EXISTS card_status_history;
 CREATE TABLE card_status_history (
                                      id               BIGINT          NOT NULL AUTO_INCREMENT COMMENT 'Surrogate primary key',
                                      application_id   VARCHAR(64)     NOT NULL              COMMENT 'FK -> card_record.application_id',
-                                     status           VARCHAR(32)     NOT NULL              COMMENT 'REQUESTED | PERSONALISED | DISPATCHED | PIN_MAILER_QUEUED | PIN_MAILER_DISPATCHED',
+                                     status           VARCHAR(32)     NOT NULL              COMMENT 'REQUESTED | PERSONALISED | DISPATCHED',
                                      source           VARCHAR(16)     NOT NULL              COMMENT 'ISSUE (initial instruction) | POLL (scheduled polling)',
                                      observed_at      TIMESTAMP       NOT NULL              COMMENT 'When this module observed the status transition',
 
