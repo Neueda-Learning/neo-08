@@ -1,6 +1,6 @@
 package com.neobank.module.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neobank.module.dto.CreateIssuingConfigRequest;
 import com.neobank.module.dto.CreateIssuingConfigResponse;
@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -47,11 +46,6 @@ public class IssuingConfigService {
                 .map(config -> config.getVersion() + 1)
                 .orElse(1);
 
-        String deliveryCountriesJson =
-                toJson(request.deliveryCountries());
-
-        String requiredAddressFieldsJson =
-                toJson(request.requiredAddressFields());
 
         IssuingConfig config = new IssuingConfig(
                 nextVersion,
@@ -89,14 +83,17 @@ public class IssuingConfigService {
         }
     }
 
-    private String toJson(List<String> values) {
-        try {
-            return objectMapper.writeValueAsString(values);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "Failed to convert issuing config list to JSON",
-                    exception
-            );
-        }
+
+    @Transactional(readOnly = true)
+    public IssuingConfig getCurrentConfig() {
+        return repository
+                .findTopByOrderByVersionDesc()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "No issuing configuration found"
+                        )
+                );
     }
+
+
 }

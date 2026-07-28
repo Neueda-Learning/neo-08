@@ -8,4 +8,6 @@ public interface IssuingConfigRepository extends JpaRepository<IssuingConfig, In
 
     /** 当前生效配置 = MAX(version)。 */
     Optional<IssuingConfig> findTopByOrderByVersionDesc();
+
+    
 }

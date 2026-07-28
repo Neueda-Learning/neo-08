@@ -2,6 +2,7 @@ package com.neobank.module.controller;
 
 import com.neobank.module.dto.CreateIssuingConfigRequest;
 import com.neobank.module.dto.CreateIssuingConfigResponse;
+import com.neobank.module.model.IssuingConfig;
 import com.neobank.module.service.IssuingConfigService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -35,4 +36,15 @@ public class IssuingConfigController {
     public String hello() {
         return "Hello World";
     }
+
+    @GetMapping("/current")
+    public ResponseEntity<IssuingConfig> getCurrent() {
+
+        IssuingConfig config =
+                issuingConfigService.getCurrentConfig();
+
+        return ResponseEntity.ok(config);
+    }
+
+
 }
