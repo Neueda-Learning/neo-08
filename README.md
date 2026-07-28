@@ -1,51 +1,57 @@
 # neo-08 — Card Issuing
 
-**Module 01 of ten.** One step of the neo-bank customer-onboarding journey, owned by
+**Module 08 of ten.** One step of the neo-bank customer-onboarding journey, owned by
 **Team 08**. The journey is driven by
 [`neo-00`](https://github.com/Neueda-Learning/neo-00), the orchestrator — which also owns the AWS
 environment this repo deploys itself into. You never call another module, and no module
 calls you: only the orchestrator does.
 
-Everything that distinguishes one module from another is an env var — `SERVICE_ID`,
-`SERVICE_NAME`, `SERVICE_DOMAIN`, `SERVICE_TEAM` — so all ten repos start as the same
-image wearing a different name. What makes yours *yours* is the business rules you write
-in `service/ApplicationService.java`.
+Everything that identifies a deployment slot is an env var — `SERVICE_ID`, `SERVICE_NAME`,
+`SERVICE_DOMAIN`, `SERVICE_TEAM` — so one image can run in any environment. The card policy itself
+is versioned data in `issuing_config`; the current version is the highest version and each issued
+card pins the version it used.
 
-**This is a skeleton.** It accepts an application from the orchestrator, answers `202`
-immediately, and then — off the request thread — does the three smallest things that prove the
-whole contract works:
+The service acknowledges the orchestrator with `202` after creating one durable `IN_PROGRESS`
+row. Off the request thread it then:
 
-1. prints `Hello world from processApplication`,
-2. writes one row to a placeholder table called `demo_showcase`,
-3. reports `ACCEPTED` back with `PUT /api/v1/applications/{id}`.
+1. requires an applicant name, product code and complete effective delivery address;
+2. applies issuing-policy v1: the `STANDARD`, `REWARDS`, and `STUDENT` card catalogue,
+   delivery to `GB` or `IE`, test PAN prefix `999900`, length 16;
+3. derives a retry-stable, Luhn-valid test PAN only after validation, sends it transiently to the
+   idempotent mocked card personalisation bureau, and persists only last-four plus a salted SHA-256
+   digest;
+4. stores `ISSUED` and reports `ACCEPTED`, or stores a fixable `FAILED` case and reports
+   `REFERRED` with an operator-readable reason.
 
-**All three are placeholders, and replacing them is the work.** Start with
-`backend/.../service/ApplicationService.java` — it is the only file you have to touch to change
-what this module does.
+Re-sending an application id never creates a second card. A live processing lease suppresses
+concurrent duplicates; a stale duplicate safely resumes with the same test PAN, and a decided
+duplicate replays the stored callback. A scheduled recovery scan releases abandoned ownership
+leases so an orchestrator resend can safely resume; it never invents an outcome without the
+original applicant payload. Terminal outcomes also form a PII-free callback outbox: a failed
+or interrupted `PUT` is claimed with a fencing token and retried until a 2xx response is recorded.
 
 ```
 controller/     the HTTP surface (contract + health + info + error shape)
-service/        ApplicationService  ← YOURS
-repository/     one Spring Data interface
-model/          DemoShowcase (⚠️ replace) · Decision enum
-dto/            what your UI reads
+service/        ApplicationService · CardRecordStore · PAN engine
+repository/     card record, status history and issuing policy
+model/          CardRecord · IssuingConfig · card/bureau state enums
+dto/            the masked operator view read by the UI
 integrations/
   orchestrator/ the wire, and the typed Application. Fixed — your own
                 integrations go BESIDE it, not in it
-config/         two beans
+  cardbureau/   the replaceable card-personalisation boundary and local mock
+config/         infrastructure beans
 ```
 
 That layout is deliberately the one from the Week-2 lab track
 (`controller → service → repository`), so nothing structural has to be learned before the work
 starts.
 
-**Read `integrations/orchestrator/Application.java` first.** It is the customer's application form
-as Java — nine nested records, every field a module could need — and it is the only place the
-domain is written down. Your rules read it: `request.application().finances().annualIncome()`.
-
-**Your table is not `demo_showcase`.** That one exists so the skeleton has something to write and
-something to show. Replacing it means a new Liquibase change set (`002-…`), your own entity, and
-deleting `DemoShowcase` — never adding columns to it. `DemoShowcase.java` spells out the steps.
+`integrations/orchestrator/Application.java` is the fixed customer application model. Card rules
+read only the name, product and delivery blocks. Names and addresses are used in memory and are
+never copied into this service's schema. Liquibase change set 002 creates the card domain and
+change set 003 drops the original `demo_showcase` table without editing the already-applied
+change set 001.
 
 ## What pushing does
 
@@ -137,7 +143,7 @@ Backend only, for fast iteration:
 ```bash
 docker compose up -d mysql sidecar
 cd backend
-./mvnw test                                              # 19 tests, H2, no Docker
+./mvnw test                                              # 54 tests, H2, no Docker
 DB_URL=jdbc:mysql://localhost:3307/neo_08 ./mvnw spring-boot:run
 ```
 
@@ -185,7 +191,7 @@ In short:
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/v1/applications` | the orchestrator sends an application → `202 {status:"in-progress", applicationId, serviceId, command}` |
-| `GET /api/v1/applications` | the `demo_showcase` rows — read by *your* UI, never by the orchestrator |
+| `GET /api/v1/applications` | masked card-case rows — read by *your* UI, never by the orchestrator |
 | `GET /health` · `GET /info` | DB-backed health · identity, BIAN domain, and what is mocked |
 
 Add whatever else your operator screen needs — a search, a detail lookup, a manual override. Those
@@ -196,7 +202,7 @@ slow — it PUTs `${ORCHESTRATOR_URL}/api/v1/applications/{applicationId}`:
 
 ```json
 { "serviceId": "neo08", "status": "ACCEPTED",
-  "comment": "hello world from processApplication" }
+  "comment": "Card issued as crd-4e12a1b2c3d4, ending 4242; personalisation status is REQUESTED." }
 ```
 
 **Three fields: the application id is in the URL, not the body.** This is an update to an
@@ -210,18 +216,25 @@ Every knob is an env var, which is how one image serves as any slot:
 
 | Env | Default | What |
 |---|---|---|
-| `SERVICE_ID` | `neo08` | the id sent on callbacks — note **no `-a`**, unlike the repo name |
+| `SERVICE_ID` | `neo08` | the id sent on callbacks — note the deliberate absence of the repo-name hyphen |
 | `SERVICE_NAME` | `Card Issuing` | display name |
-| `SERVICE_DOMAIN` | `unassigned` | the BIAN domain you own, reported on `/info` |
+| `SERVICE_TEAM` | `Team 08` | owner shown on `/info` and the operator UI |
+| `SERVICE_DOMAIN` | `card` | the BIAN domain reported on `/info` |
 | `ORCHESTRATOR_URL` | `http://localhost:9000` | where callbacks go — see the three targets below |
-| `MOCKED_DEPENDENCIES` | *(empty)* | comma-separated systems you fake — the register, served live |
-| `WORKER_POOL_SIZE` | `8` | threads available to run your rules |
+| `MOCKED_DEPENDENCIES` | `card-personalisation-bureau` | comma-separated systems faked by this image, served live |
+| `WORKER_POOL_SIZE` | `8` | threads available to process applications |
+| `WORKER_QUEUE_CAPACITY` | `32` | bounded hand-off queue; overload returns a retryable `503` instead of a false `202` |
+| `PAN_HASH_SALT` | local-only fallback | secret for retry-safe test-PAN derivation and non-reversible digests; Compose/ECS inject it |
+| `CARD_PROCESSING_LEASE` | `2m` | when an interrupted worker may be recovered |
+| `CARD_RECOVERY_INTERVAL_MS` | `30000` | how often abandoned worker leases are released for a safe resend |
+| `CARD_CALLBACK_LEASE` | `30s` | when an interrupted callback dispatcher may be fenced and retried |
+| `CARD_CALLBACK_RETRY_INTERVAL_MS` | `10000` | how often the durable callback outbox is scanned |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | see compose | this service's own schema |
+| `SIDECAR_PORT` / `SIDECAR_REF` / `MODULE_URL` | `9000` / `v1` / `http://backend:8080` | the mock orchestrator (`SIDECAR_REF` is the git ref compose builds) |
 
 **There are no decision knobs.** What this module answers comes from your rules, not from a
 weight, a seed or a delay. Those env vars existed when the decision was a seeded coin flip; the
 coin flip is gone.
-| `SIDECAR_PORT` / `SIDECAR_REF` / `MODULE_URL` | `9000` / `v1` / `http://backend:8080` | the mock orchestrator (`SIDECAR_REF` is the git ref compose builds) |
 
 ### The three things `ORCHESTRATOR_URL` can point at
 
@@ -237,8 +250,12 @@ Only this value changes between them. The module's code does not.
 
 ```bash
 cd backend
-./mvnw test                       # 19: unit + web-slice + full-context H2
-./mvnw verify -DskipITs=false     # + RequestRepositoryIT against real MySQL 8 (needs Docker)
+./mvnw test                       # 54: rules + PAN + outbox + wire + web/full-context H2
+./mvnw verify -DskipITs=false     # + 5 CardRecordRepositoryIT checks on MySQL 8 (needs Docker)
+
+cd ../frontend
+npm test                          # 3 deterministic status/UTC presentation tests
+npm run build
 ```
 
 `*Test` runs Docker-free. `*IT` needs Docker and is skipped locally unless you ask for it;

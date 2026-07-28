@@ -11,14 +11,12 @@ Two things at once, and the tension between them is worth knowing about.
 **Proving the plumbing:** repos assembled by submodules, one `docker compose up`, a
 request→`202`→callback loop, deployed to AWS by `neo-00`'s pipeline.
 
-**Being the template a team clones.** That is why the layout is
+**Having started from the template every team cloned.** That is why the layout is
 `controller/ service/ repository/ model/ dto/ integrations/` — the same shape as the Week-2 lab
-track, so nothing about the structure has to be learned before the work starts. And it is why the
-business logic is now **one file, `service/ApplicationService.java`**, which does three placeholder
-things — log, write one row, report `ACCEPTED` — so the journey runs end to end before a team has
-written a line. Growing it into real logic is the point; **there is nothing here to preserve.** In
-particular `demo_showcase` is a placeholder table a team is expected to delete, not a base to build
-on.
+track. The placeholder has now been replaced by the card-issuing workflow: durable intake,
+catalogue/delivery validation, test-PAN generation, a card-bureau boundary, masked persistence and
+a fenced callback outbox. Change set 003 drops `demo_showcase`; do not resurrect it or edit the
+applied change set 001.
 
 ## The contract is fixed
 
@@ -67,7 +65,7 @@ only build and test. Three consequences worth holding on to:
   ahead of your changelog, so write the changeset rather than repairing anything.
 - **`backend/` and `frontend/` stay at the repo root** — the system compose builds them by
   path (`./neo-08/backend`). Moving them breaks the whole stack.
-- **Keep `./mvnw test` green** (19 tests, H2, no Docker). Real-MySQL tests are `*IT`
+- **Keep `./mvnw test` green** (54 tests, H2, no Docker). Real-MySQL tests are `*IT`
   (Testcontainers) and run on `./mvnw verify` — in CI automatically, locally with
   `-DskipITs=false` and Docker up.
 - **Everything configurable is an env var.** One image serves as any slot; anything
@@ -77,12 +75,14 @@ only build and test. Three consequences worth holding on to:
 
 | Where | What |
 |---|---|
-| `backend/.../service/ApplicationService.java` | **the one file a team edits** — log, store, report |
+| `backend/.../service/ApplicationService.java` | card rules and transient issue flow |
+| `backend/.../service/CardRecordStore.java` · `PanGenerator.java` | transaction boundaries · Luhn/masking/hash utility |
 | `backend/.../integrations/orchestrator/` | the wire: 3 records + the client. **Fixed** — see its `package-info.java` |
+| `backend/.../integrations/cardbureau/` | replaceable personalisation boundary + local mock |
 | `backend/.../controller/ApplicationController.java` | the whole contract HTTP surface |
 | `backend/.../integrations/orchestrator/Application.java` | the customer's form as Java — nine nested records. **Read it before writing rules** |
-| `backend/.../model/DemoShowcase.java` | ⚠️ the placeholder table. Replace it; do not add columns |
-| `backend/.../repository/` · `dto/` | one repository, one view record |
+| `backend/.../model/CardRecord.java` · `IssuingConfig.java` | durable case · versioned issuing policy |
+| `backend/.../repository/` · `dto/` | card/config/history persistence · masked operator view |
 | `backend/src/main/resources/db/changelog/` | schema |
 | `backend/src/main/resources/static/` | zero-build status page at `/` |
 | `frontend/src/` | the React UI — **one screen**, no tabs, no router |

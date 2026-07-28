@@ -69,7 +69,47 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20", cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
+      - run: npm test
+      - id: prefix
+        run: echo "value=$(sed -n 's/^PathPrefix=//p' ../infra/env/dev.params)" >> "$GITHUB_OUTPUT"
       - run: npm run build
+        env: { APP_BASE_PATH: "${{ steps.prefix.outputs.value }}" }
+      - name: Verify the deployed asset prefix and local stack configuration
+        run: |
+          grep -F '${{ steps.prefix.outputs.value }}/assets/' dist/index.html
+          docker compose -f ../docker-compose.yml config --quiet
+          bash -n ../scripts/reset-db.sh
+
+  # Feature branches do not publish, but they still prove both production
+  # Dockerfiles. Main gets the same proof from the publish job below.
+  images:
+    name: build · container images
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - id: prefix
+        run: echo "value=$(sed -n 's/^PathPrefix=//p' infra/env/dev.params)" >> "$GITHUB_OUTPUT"
+      - name: Build prefixed frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          build-args: |
+            APP_BASE_PATH=${{ steps.prefix.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
 
   # ---- PUBLISH (MAIN only): pinned @sha256 digests are this job's outputs ---------------
   publish:
