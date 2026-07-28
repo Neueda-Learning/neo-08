@@ -55,6 +55,10 @@ public class CardRecord {
     @Column(name = "issued_at")
     private Instant issuedAt;
 
+
+    @Column(name = "reason_code", length = 64)
+    private String reasonCode;
+
     protected CardRecord() {
         // JPA
     }
@@ -116,5 +120,36 @@ public class CardRecord {
 
     public Instant getIssuedAt() {
         return issuedAt;
+    }
+
+
+    public void markIssued(
+            String bureauCardId,
+            BureauStatus bureauStatus,
+            Integer configVersion) {
+
+        if (outcome != CardOutcome.IN_PROGRESS) {
+            return;
+        }
+
+        this.outcome = CardOutcome.ISSUED;
+        this.bureauCardId = bureauCardId;
+        this.bureauStatus = bureauStatus;
+        this.issuingConfigVersion = configVersion;
+        this.reasonCode = "CRD_ISSUED";
+        this.issuedAt = Instant.now();
+    }
+
+    public void markFailed(String reasonCode) {
+        if (outcome != CardOutcome.IN_PROGRESS) {
+            return;
+        }
+
+        this.outcome = CardOutcome.FAILED;
+        this.reasonCode = reasonCode;
+    }
+
+    public String getReasonCode() {
+        return reasonCode;
     }
 }
