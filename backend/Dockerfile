@@ -8,6 +8,7 @@ WORKDIR /app
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY src/ src/
+RUN tr -d '\r' < mvnw > /tmp/mvnw && mv /tmp/mvnw mvnw && chmod +x mvnw
 RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     ./mvnw -B -q clean package -DskipTests
 
