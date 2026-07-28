@@ -56,6 +56,8 @@ public class GlobalExceptionHandler {
                 "malformed request body: " + (newline > 0 ? message.substring(0, newline) : message));
     }
 
+
+
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());

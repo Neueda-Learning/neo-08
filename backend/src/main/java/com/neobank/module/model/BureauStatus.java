@@ -1,8 +1,6 @@
 package com.neobank.module.model;
 
-/**
- * Bureau-side lifecycle states observed by polling, never commanded directly.
- */
+/** Card lifecycle reported by the personalisation bureau. */
 public enum BureauStatus {
     REQUESTED,
     PERSONALISED,
