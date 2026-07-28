@@ -4,8 +4,8 @@ import com.neobank.module.dto.DemoShowcaseView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -56,6 +56,7 @@ public class ApplicationController {
         applications.processApplicationAsync(request);
         return ResponseEntity.accepted().body(ack(request));
     }
+
 
     /**
      * The {@code 202} body — the shape in {@code api-contract.md} §2, spelled out here rather than

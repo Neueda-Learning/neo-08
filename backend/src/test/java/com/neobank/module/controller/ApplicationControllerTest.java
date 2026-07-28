@@ -1,6 +1,7 @@
 package com.neobank.module.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -55,6 +56,7 @@ class ApplicationControllerTest {
                                 }
                                 """))
                 .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$").value(aMapWithSize(4)))
                 .andExpect(jsonPath("$.status").value("in-progress"))
                 .andExpect(jsonPath("$.applicationId").value("SIM-01"))
                 .andExpect(jsonPath("$.serviceId").value("neo08"))
