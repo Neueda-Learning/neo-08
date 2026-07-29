@@ -1,135 +1,190 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
   Card,
   Checkbox,
   DataTable,
+  EmptyState,
   Field,
   FormActions,
   FormGrid,
   KeyValue,
-  MetricTile,
   PageHeader,
   Section,
+  Spinner,
   Stack,
   TextInput,
 } from '../design-system';
+import { api } from '../api.js';
 
 const ALL_ADDRESS_FIELDS = ['line1', 'line2', 'city', 'postcode', 'country'];
 
-// --- Mock version history (UC acceptance criteria checkpoint values) ---
+const PAN_PREFIX_RE = /^9999\d{2}$/;
+const ISO_CODE_RE = /^[A-Z]{2}$/;
 
-const MOCK_VERSIONS = [
-  {
-    version: 1,
-    panPrefix: '999900',
-    panLength: 16,
-    deliveryCountries: ['GB', 'IE'],
-    requiredAddressFields: ['line1', 'city', 'postcode', 'country'],
-    bureauBaseUrl: 'http://mock-bureau:8091',
-    effectiveFrom: '2026-07-22T07:00:00Z',
-  },
-  {
-    version: 2,
-    panPrefix: '999901',
-    panLength: 16,
-    deliveryCountries: ['GB', 'IE', 'FR'],
-    requiredAddressFields: ['line1', 'city', 'postcode', 'country'],
-    bureauBaseUrl: 'http://mock-bureau:8091',
-    effectiveFrom: '2026-07-22T11:00:00Z',
-  },
-];
-
-const CURRENT = MOCK_VERSIONS[MOCK_VERSIONS.length - 1];
-
-function parseCsv(s) {
-  return s
-    .split(',')
-    .map((v) => v.trim().toUpperCase())
-    .filter(Boolean);
+function validate({ prefix, countries, addressFields }) {
+  const errs = {};
+  if (!PAN_PREFIX_RE.test(prefix)) {
+    errs.prefix = 'Must be 6 digits starting with 9999 (e.g. 999901)';
+  }
+  const countryList = countries.split(',').map((v) => v.trim()).filter(Boolean);
+  if (countryList.length === 0) {
+    errs.countries = 'At least one ISO country code required';
+  } else {
+    const bad = countryList.find((c) => !ISO_CODE_RE.test(c));
+    if (bad) errs.countries = `"${bad}" is not a valid ISO alpha-2 code (e.g. GB)`;
+  }
+  const selected = ALL_ADDRESS_FIELDS.filter((f) => addressFields[f]);
+  if (selected.length === 0) {
+    errs.addressFields = 'At least one address field required';
+  }
+  return errs;
 }
 
 export default function IssuingConfig() {
+  const [config, setConfig] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Form state
   const [prefix, setPrefix] = useState('');
-  const [length, setLength] = useState('16');
+  const [length] = useState('16');
   const [countries, setCountries] = useState('');
   const [addressFields, setAddressFields] = useState(
     Object.fromEntries(ALL_ADDRESS_FIELDS.map((f) => [f, true]))
   );
-  const [bureauUrl, setBureauUrl] = useState('');
+  const [bureauUrl] = useState('http://mock-bureau:8091');
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState(null); // { ok, message }
+  const [formErrors, setFormErrors] = useState({});
+
+  // Load current config + history on mount
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([api.getCurrentConfig(), api.getConfigHistory()])
+      .then(([c, h]) => { setConfig(c); setHistory(h); })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   function toggleField(f) {
     setAddressFields((prev) => ({ ...prev, [f]: !prev[f] }));
+    setFormErrors((prev) => ({ ...prev, addressFields: undefined }));
   }
 
   function selectedFields() {
     return ALL_ADDRESS_FIELDS.filter((f) => addressFields[f]);
   }
 
-  function handleSubmit() {
-    /* API call placeholder — POST /config */
-    alert(`POST /config\npanPrefix=${prefix}\npanLength=${length}\ndeliveryCountries=${countries}\nrequiredAddressFields=${selectedFields().join(',')}\nbureauBaseUrl=${bureauUrl}`);
+  function setVal(setter, field) {
+    return (e) => {
+      setter(e.target.value);
+      setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+    };
   }
 
-  const versionColumns = [
-    { key: 'version', header: 'Version', tight: true },
-    { key: 'panPrefix', header: 'PAN Prefix', mono: true },
-    { key: 'panLength', header: 'Length', tight: true },
-    {
-      key: 'deliveryCountries',
-      header: 'Countries',
-      render: (r) => r.deliveryCountries.join(', '),
-    },
-    {
-      key: 'requiredAddressFields',
-      header: 'Address fields',
-      render: (r) => r.requiredAddressFields.join(', '),
-    },
-    { key: 'bureauBaseUrl', header: 'Bureau URL', mono: true },
-    {
-      key: 'effectiveFrom',
-      header: 'Effective',
-      render: (r) => new Date(r.effectiveFrom).toLocaleString(),
-    },
-  ];
+  async function handleSubmit(e) {
+    e?.preventDefault();
+    const errs = validate({ prefix, countries, addressFields });
+    setFormErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setSaving(true);
+    setSaveResult(null);
+    setFormErrors({});
+    try {
+      const response = await api.createConfigVersion({
+        panPrefix: prefix,
+        panLength: parseInt(length, 10),
+        deliveryCountries: countries
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean),
+        requiredAddressFields: selectedFields(),
+        bureauBaseUrl: bureauUrl,
+      });
+      setSaveResult({ ok: true, message: `Version ${response.version} created` });
+      // Reload current config + history
+      Promise.all([api.getCurrentConfig(), api.getConfigHistory()])
+        .then(([c, h]) => { setConfig(c); setHistory(h); });
+      // Clear form (prefix & countries only; length & bureauUrl are fixed)
+      setPrefix('');
+      setCountries('');
+    } catch (err) {
+      setSaveResult({ ok: false, message: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Issuing Configuration" lede="loading…" />
+        <div style={{ textAlign: 'center', padding: 'var(--ds-space-8)' }}>
+          <Spinner />
+        </div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Issuing Configuration" />
+        <EmptyState title="Failed to load config">{error}</EmptyState>
+      </>
+    );
+  }
+
+  if (!config) {
+    return (
+      <>
+        <PageHeader title="Issuing Configuration" />
+        <EmptyState title="No config found">No issuing configuration exists yet.</EmptyState>
+      </>
+    );
+  }
 
   return (
     <>
+      <style>{'.history-table .ds-table th,.history-table .ds-table td{text-align:center}'}</style>
       <PageHeader
         title="Issuing Configuration"
         lede="versioned PAN range and delivery rules · insert-only · current = MAX(version)"
       />
 
       <Stack>
-        {/* Current config summary */}
         <Section title="Current config">
           <Card>
             <KeyValue
               items={[
-                { label: 'Version', value: CURRENT.version },
-                { label: 'PAN prefix', value: CURRENT.panPrefix, mono: true },
-                { label: 'PAN length', value: CURRENT.panLength },
-                { label: 'Delivery countries', value: CURRENT.deliveryCountries.join(', ') },
+                { label: 'Version', value: config.version },
+                { label: 'PAN prefix', value: config.panPrefix, mono: true },
+                { label: 'PAN length', value: config.panLength },
+                { label: 'Delivery countries', value: (config.deliveryCountries ?? []).join(', ') },
                 {
                   label: 'Required address fields',
-                  value: CURRENT.requiredAddressFields.join(', '),
+                  value: (config.requiredAddressFields ?? []).join(', '),
                 },
-                { label: 'Bureau URL', value: CURRENT.bureauBaseUrl, mono: true },
+                { label: 'Bureau URL', value: config.bureauBaseUrl, mono: true },
                 {
                   label: 'Effective from',
-                  value: new Date(CURRENT.effectiveFrom).toLocaleString(),
+                  value: config.effectiveFrom
+                    ? new Date(config.effectiveFrom).toLocaleString()
+                    : '—',
                 },
               ]}
             />
           </Card>
         </Section>
 
-        {/* New version form */}
         <Section title="Issue a new version">
           <Card>
             <FormGrid cols={2}>
-              <Field label="PAN prefix" hint="6 digits inside the reserved 9999xx test block" required>
+              <Field label="PAN prefix" hint="6 digits inside the reserved 9999xx test block" required error={formErrors.prefix}>
                 {({ id, invalid, describedBy }) => (
                   <TextInput
                     id={id}
@@ -139,27 +194,25 @@ export default function IssuingConfig() {
                     maxLength={6}
                     invalid={invalid}
                     aria-describedby={describedBy}
-                    onChange={(e) => setPrefix(e.target.value)}
+                    onChange={setVal(setPrefix, 'prefix')}
                   />
                 )}
               </Field>
 
-              <Field label="PAN length" hint="total length including the Luhn check digit" required>
-                {({ id, invalid, describedBy }) => (
+              <Field label="PAN length" hint="fixed at 16" required>
+                {({ id, describedBy }) => (
                   <TextInput
                     id={id}
                     mono
                     value={length}
-                    placeholder="16"
-                    invalid={invalid}
+                    readOnly
                     aria-describedby={describedBy}
-                    onChange={(e) => setLength(e.target.value)}
                   />
                 )}
               </Field>
 
               <FormGrid.Full>
-                <Field label="Delivery countries" hint="comma-separated ISO country codes, e.g. GB, IE, FR" required>
+                <Field label="Delivery countries" hint="comma-separated ISO codes, e.g. GB, IE, FR" required error={formErrors.countries}>
                   {({ id, invalid, describedBy }) => (
                     <TextInput
                       id={id}
@@ -167,14 +220,14 @@ export default function IssuingConfig() {
                       placeholder="GB, IE, FR"
                       invalid={invalid}
                       aria-describedby={describedBy}
-                      onChange={(e) => setCountries(e.target.value)}
+                      onChange={setVal(setCountries, 'countries')}
                     />
                   )}
                 </Field>
               </FormGrid.Full>
 
               <FormGrid.Full>
-                <Field label="Required address fields" hint="which fields an alternative delivery address must have">
+                <Field label="Required address fields" error={formErrors.addressFields}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--ds-space-4)' }}>
                     {ALL_ADDRESS_FIELDS.map((f) => (
                       <Checkbox
@@ -189,39 +242,72 @@ export default function IssuingConfig() {
               </FormGrid.Full>
 
               <FormGrid.Full>
-                <Field label="Bureau base URL" hint="where the mock bureau lives" required>
-                  {({ id, invalid, describedBy }) => (
+                <Field label="Bureau base URL" hint="fixed" required>
+                  {({ id, describedBy }) => (
                     <TextInput
                       id={id}
                       mono
                       value={bureauUrl}
-                      placeholder="http://mock-bureau:8091"
-                      invalid={invalid}
+                      readOnly
                       aria-describedby={describedBy}
-                      onChange={(e) => setBureauUrl(e.target.value)}
                     />
                   )}
                 </Field>
               </FormGrid.Full>
 
               <FormGrid.Full>
-                <FormActions>
-                  <Button variant="primary" onClick={handleSubmit}>Save new version</Button>
-                </FormActions>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-4)' }}>
+                  <FormActions>
+                    <Button variant="primary" disabled={saving} onClick={handleSubmit}>
+                      {saving ? 'Saving…' : 'Save new version'}
+                    </Button>
+                  </FormActions>
+                  {saveResult && (
+                    <span style={{
+                      fontSize: 'var(--ds-text-sm)',
+                      color: saveResult.ok ? 'var(--ds-tone-positive-accent)' : 'var(--ds-tone-negative-accent)',
+                    }}>
+                      {saveResult.message}
+                    </span>
+                  )}
+                </div>
               </FormGrid.Full>
             </FormGrid>
           </Card>
         </Section>
 
-        {/* Version history */}
         <Section title="Version history">
-          <DataTable
-            columns={versionColumns}
-            rows={MOCK_VERSIONS}
-            total={MOCK_VERSIONS.length}
-            rowKey={(r) => r.version}
-            footnote="insert-only — rows are never updated or deleted"
-          />
+          {!history ? (
+            <div style={{ textAlign: 'center', padding: 'var(--ds-space-4)' }}>
+              <Spinner />
+            </div>
+          ) : history.length === 0 ? (
+            <EmptyState title="No versions yet" />
+          ) : (
+            <Card>
+              <DataTable
+                className="history-table"
+                columns={[
+                  { key: 'version', header: 'Version', width: '15%' },
+                  { key: 'panPrefix', header: 'PAN prefix', width: '20%' },
+                  { key: 'panLength', header: 'Length', width: '15%' },
+                  { key: 'deliveryCountries', header: 'Countries', width: '25%' },
+                  { key: 'effectiveFrom', header: 'Effective from', width: '25%' },
+                ]}
+                rows={history.map((v) => ({
+                  version: v.version,
+                  panPrefix: v.panPrefix,
+                  panLength: v.panLength,
+                  deliveryCountries: (v.deliveryCountries ?? []).join(', '),
+                  effectiveFrom: v.effectiveFrom
+                    ? new Date(v.effectiveFrom).toLocaleString()
+                    : '—',
+                }))}
+                rowKey={(row) => row.version}
+                total={history.length}
+              />
+            </Card>
+          )}
         </Section>
       </Stack>
     </>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
@@ -7,40 +7,104 @@ import {
   KeyValue,
   PageHeader,
   Section,
+  Spinner,
   Stack,
-  TextInput,
 } from '../design-system';
-import { outcomeTone, bureauStatusTone, time } from '../status.js';
-
-function maskPan(last4) {
-  if (!last4) return '—';
-  return `**** **** **** ${last4}`;
-}
+import { api } from '../api.js';
+import { outcomeTone, bureauStatusTone } from '../status.js';
 
 export default function CardDetail({ selectedCard, onBack }) {
+  const [detail, setDetail] = useState(null);
+  const [applicant, setApplicant] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!selectedCard) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setDetail(null);
+    setApplicant(null);
+
+    Promise.all([
+      api.getCardDetail(selectedCard.applicationId),
+      api.getApplicant(selectedCard.applicationId),
+    ])
+      .then(([d, a]) => {
+        if (cancelled) return;
+        setDetail(d);
+        setApplicant(a);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedCard]);
+
   if (!selectedCard) {
     return (
       <>
         <PageHeader
           title="Card Detail"
-          lede="enter an application id or reference to view a card record"
+          lede="select a card from the board to see its details"
         />
         <EmptyState title="No card selected">
-          Click a row on the <strong>Card Board</strong> to see its details, or paste an
-          application id below.
+          Click a row on the <strong>Card Board</strong> to see its details.
         </EmptyState>
       </>
     );
   }
 
-  const r = selectedCard;
+  if (loading || !detail) {
+    return (
+      <>
+        <PageHeader
+          title="Card Detail"
+          lede={`loading ${selectedCard.applicationId}…`}
+        />
+        <div style={{ textAlign: 'center', padding: 'var(--ds-space-8)' }}>
+          <Spinner />
+        </div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <PageHeader
+          title="Card Detail"
+          lede={selectedCard.applicationId}
+        >
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            Back to board
+          </Button>
+        </PageHeader>
+        <EmptyState title="Failed to load card">{error}</EmptyState>
+      </>
+    );
+  }
+
+  const title = applicant?.fullName
+    ? `${applicant.fullName}  ·  ${detail.reference}`
+    : `Card ${detail.reference}`;
+
+  const address = applicant?.deliveryAddress;
+  const addressLine = address
+    ? [address.line1, address.line2, address.city, address.postcode, address.country]
+        .filter(Boolean)
+        .join(', ')
+    : '—';
 
   return (
     <>
-      <PageHeader
-        title={`Card ${r.reference}`}
-        lede={`application ${r.applicationId}`}
-      >
+      <PageHeader title={title} lede={selectedCard.applicationId}>
         <Button variant="ghost" size="sm" onClick={onBack}>
           Back to board
         </Button>
@@ -51,9 +115,30 @@ export default function CardDetail({ selectedCard, onBack }) {
           <Card>
             <KeyValue
               items={[
-                { label: 'Outcome', value: <Badge tone={outcomeTone(r.outcome)}>{r.outcome}</Badge> },
-                { label: 'Reference', value: r.reference, mono: true },
-                { label: 'Issued at', value: time(r.issuedAt) },
+                { label: 'Outcome', value: <Badge tone={outcomeTone(detail.outcome)}>{detail.outcome}</Badge> },
+                { label: 'Reference', value: detail.reference, mono: true },
+                {
+                  label: 'Reason',
+                  value: detail.reasons?.length > 0
+                    ? detail.reasons.map((r, i) => <Badge key={i} tone="negative">{r.code}</Badge>)
+                    : '—',
+                },
+              ]}
+            />
+          </Card>
+        </Section>
+
+        <Section title="Applicant">
+          <Card>
+            <KeyValue
+              items={[
+                { label: 'Name', value: applicant?.fullName ?? '—' },
+                { label: 'Product', value: detail.productCode ?? '—' },
+                {
+                  label: 'Delivery',
+                  value: applicant?.useCurrentAddress ? 'Current address' : 'Alternative address',
+                },
+                { label: 'Address', value: addressLine, mono: true },
               ]}
             />
           </Card>
@@ -63,16 +148,16 @@ export default function CardDetail({ selectedCard, onBack }) {
           <Card>
             <KeyValue
               items={[
-                { label: 'PAN', value: maskPan(r.panLast4), mono: true },
-                { label: 'PAN Hash', value: r.panHash ?? '—', mono: true },
-                { label: 'Bureau card ID', value: r.bureauCardId ?? '—', mono: true },
+                { label: 'PAN', value: detail.panMasked ?? '—', mono: true },
+                { label: 'PAN Hash', value: detail.panHash ?? '—', mono: true },
+                { label: 'Bureau card ID', value: detail.bureauCardId ?? '—', mono: true },
                 {
                   label: 'Bureau status',
-                  value: r.bureauStatus ? (
-                    <Badge tone={bureauStatusTone(r.bureauStatus)}>{r.bureauStatus}</Badge>
+                  value: detail.bureauStatus ? (
+                    <Badge tone={bureauStatusTone(detail.bureauStatus)}>{detail.bureauStatus}</Badge>
                   ) : '—',
                 },
-                { label: 'Dispatch ref', value: r.dispatchRef ?? '—', mono: true },
+                { label: 'Dispatch ref', value: detail.dispatchRef ?? '—', mono: true },
               ]}
             />
           </Card>
@@ -82,9 +167,8 @@ export default function CardDetail({ selectedCard, onBack }) {
           <Card>
             <KeyValue
               items={[
-                { label: 'Account', value: r.accountId, mono: true },
-                { label: 'Product code', value: r.productCode },
-                { label: 'Issuing config version', value: r.issuingConfigVersion ?? 1 },
+                { label: 'Account', value: detail.accountId ?? '—', mono: true },
+                { label: 'Issuing config version', value: detail.issuingConfigVersion ?? '—' },
               ]}
             />
           </Card>

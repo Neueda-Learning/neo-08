@@ -60,10 +60,21 @@ export const api = {
   // UC 01 — Card Board
   searchCards: (q) =>
     requestWithHeaders(`/cases?q=${encodeURIComponent(q)}&limit=10`),
+  listAllCards: () =>
+    requestWithHeaders('/cases/all?limit=10'),
 
-  // UC 03 — applicant proxy (name + productCode hydration)
+  // UC 02 — Card Detail
+  getCardDetail: (id) => request(`/cases/${id}`),
+
+  // UC 03 — applicant proxy
   getApplicant: (id) => request(`/cases/${id}/applicant`),
 
-  listApplications: () => request('/api/v1/applications'),
+  // UC 08 — Issuing Config
+  getCurrentConfig: () => request('/config/current'),
+  getConfigHistory: () => request('/config/history'),
+  createConfigVersion: (data) => request('/config', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
 };

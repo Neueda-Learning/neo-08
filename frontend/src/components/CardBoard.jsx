@@ -16,35 +16,10 @@ import { outcomeTone, bureauStatusTone, OUTCOMES, time } from '../status.js';
 
 const FILTERS = ['All', ...OUTCOMES];
 
-function maskPan(last4) {
-  if (!last4) return '—';
-  return `**** **** **** ${last4}`;
-}
-
-/** Hydrate applicant names + product codes for a batch of card summaries. */
-async function hydrate(cases) {
-  const hydrated = await Promise.all(
-    cases.map(async (c) => {
-      try {
-        const applicant = await api.getApplicant(c.applicationId);
-        return {
-          ...c,
-          applicantName: applicant.fullName,
-          productCode: applicant.productCode,
-        };
-      } catch {
-        // applicant lookup failed — still show the row without a name
-        return { ...c, applicantName: null, productCode: null };
-      }
-    })
-  );
-  return hydrated;
-}
-
 export default function CardBoard({ onSelectCard }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
-  const [cards, setCards] = useState(null); // null = haven't searched yet
+  const [cards, setCards] = useState(null);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState(null);
@@ -56,8 +31,7 @@ export default function CardBoard({ onSelectCard }) {
     try {
       const { body, headers } = await api.searchCards(q);
       setHasMore(headers.get('X-Has-More') === 'true');
-      const hydrated = await hydrate(body);
-      setCards(hydrated);
+      setCards(body);
     } catch (err) {
       setError(err.message);
       setCards([]);
@@ -66,16 +40,25 @@ export default function CardBoard({ onSelectCard }) {
     }
   }, []);
 
-  // Debounced search
+  // Debounced search — empty query reloads all cards (handles initial mount and clearing search)
   useEffect(() => {
-    const needle = query.trim();
-    if (!needle) {
-      setCards(null);
-      setHasMore(false);
+    const needl = query.trim();
+    if (timer.current) clearTimeout(timer.current);
+    if (!needl) {
+      timer.current = setTimeout(() => {
+        setLoading(true);
+        setError(null);
+        api.listAllCards()
+          .then(({ body, headers }) => {
+            setHasMore(headers.get('X-Has-More') === 'true');
+            setCards(body);
+          })
+          .catch((err) => { setError(err.message); setCards([]); })
+          .finally(() => setLoading(false));
+      }, 150);
       return;
     }
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => doSearch(needle), 300);
+    timer.current = setTimeout(() => doSearch(needl), 300);
     return () => clearTimeout(timer.current);
   }, [query, doSearch]);
 
@@ -94,28 +77,24 @@ export default function CardBoard({ onSelectCard }) {
   }, [cards, filter]);
 
   const columns = [
-    { key: 'applicationId', header: 'Application', mono: true },
-    {
-      key: 'applicantName',
-      header: 'Applicant',
-      render: (r) => r.applicantName ?? '—',
-    },
+    { key: 'applicationId', header: 'Application', mono: true, width: '20%' },
     {
       key: 'panLast4',
-      header: 'Card',
+      header: 'PAN',
       mono: true,
-      render: (r) => maskPan(r.panLast4),
+      width: '20%',
+      render: (r) => (r.panLast4 ? `****${r.panLast4}` : '—'),
     },
     {
       key: 'outcome',
       header: 'Outcome',
-      tight: true,
+      width: '20%',
       render: (r) => <Badge tone={outcomeTone(r.outcome)}>{r.outcome}</Badge>,
     },
     {
       key: 'bureauStatus',
       header: 'Bureau',
-      tight: true,
+      width: '20%',
       render: (r) =>
         r.bureauStatus ? (
           <Badge tone={bureauStatusTone(r.bureauStatus)}>{r.bureauStatus}</Badge>
@@ -123,8 +102,7 @@ export default function CardBoard({ onSelectCard }) {
           '—'
         ),
     },
-    { key: 'productCode', header: 'Product' },
-    { key: 'issuedAt', header: 'Issued', render: (r) => time(r.issuedAt) },
+    { key: 'issuedAt', header: 'Issued', width: '20%', render: (r) => time(r.issuedAt) },
   ];
 
   const footnote = [hasMore && 'more results available — refine your search', 'newest first']
@@ -133,9 +111,10 @@ export default function CardBoard({ onSelectCard }) {
 
   return (
     <>
+      <style>{'.board-table .ds-table th,.board-table .ds-table td{text-align:center}'}</style>
       <PageHeader
         title="Card Board"
-        lede="search by application id or applicant name · newest first · max 10 rows"
+        lede="search by application id · newest first · max 10 rows"
       />
 
       <Grid cols={4} min={120} style={{ marginBottom: 'var(--ds-space-6)' }}>
@@ -148,7 +127,7 @@ export default function CardBoard({ onSelectCard }) {
       <Toolbar>
         <SearchInput
           grow
-          placeholder="Application id or applicant name"
+          placeholder="Application id"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search cards"
@@ -168,6 +147,7 @@ export default function CardBoard({ onSelectCard }) {
 
       {!loading && !error && (
         <DataTable
+          className="board-table"
           columns={columns}
           rows={matches}
           total={matches.length}
@@ -176,11 +156,11 @@ export default function CardBoard({ onSelectCard }) {
           onRowClick={onSelectCard}
           empty={
             <EmptyState
-              title={cards === null ? 'Search to see cards' : 'No cards match that search'}
+              title={cards && cards.length === 0 ? 'No cards match that search' : 'No card records yet'}
             >
-              {cards === null
-                ? 'Enter an application id or applicant name to find card records.'
-                : 'Clear the search, or pick a different outcome.'}
+              {cards && cards.length === 0
+                ? 'Clear the search, or pick a different outcome.'
+                : 'When card issuing records are created they will appear here.'}
             </EmptyState>
           }
         />
