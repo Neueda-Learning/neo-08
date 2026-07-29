@@ -85,7 +85,7 @@ public class CardIntakeService {
             CardExecuteRequest request) {
 
         try {
-            log.info("1111111");
+
             cardIssuingService.process(request);
         } catch (RuntimeException exception) {
             log.error(
