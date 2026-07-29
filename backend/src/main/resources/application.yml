@@ -39,6 +39,8 @@ spring:
 
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+    parameters:
+      bureauBaseUrl: ${CARD_BUREAU_URL:http://mock-bureau:8091}
 
   # The pool the decision runs on — Spring Boot's own `applicationTaskExecutor`, so there is no
   # bean to write. The thread-name prefix is what proves, in the logs, that your rules did NOT

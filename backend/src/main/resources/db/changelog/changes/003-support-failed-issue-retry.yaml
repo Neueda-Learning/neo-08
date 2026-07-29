@@ -1,0 +1,89 @@
+# UC-04 queue metadata and manual-retry audit support.
+#
+# No applicant name or corrected address is stored. The added timestamps are business event
+# times (last issue attempt), not generic create/update bookkeeping.
+databaseChangeLog:
+  - changeSet:
+      id: 003-support-failed-issue-retry
+      author: neo-08
+      changes:
+        - addColumn:
+            tableName: card_record
+            columns:
+              - column:
+                  name: failure_reason
+                  type: VARCHAR(64)
+                  remarks: "Current recoverable failure: CRD_DELIVERY_ADDRESS_INVALID or CRD_BUREAU_UNAVAILABLE"
+              - column:
+                  name: last_attempt_at
+                  type: TIMESTAMP
+                  remarks: "When the most recent bureau issue attempt occurred"
+        - addColumn:
+            tableName: card_status_history
+            columns:
+              - column:
+                  name: manual_address
+                  type: BIT(1)
+                  defaultValueBoolean: false
+                  remarks: "Whether this issue instruction used an operator-supplied address"
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: card_record
+            indexName: idx_card_record_failed_queue
+            columns:
+              - column:
+                  name: outcome
+              - column:
+                  name: last_attempt_at
+      rollback:
+        - dropIndex:
+            tableName: card_record
+            indexName: idx_card_record_failed_queue
+        - dropColumn:
+            tableName: card_status_history
+            columnName: manual_address
+        - dropColumn:
+            tableName: card_record
+            columnName: last_attempt_at
+        - dropColumn:
+            tableName: card_record
+            columnName: failure_reason
+
+  - changeSet:
+      id: 003-seed-issuing-config-v1
+      author: neo-08
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: "0"
+            sql: SELECT COUNT(*) FROM issuing_config
+      changes:
+        - insert:
+            tableName: issuing_config
+            columns:
+              - column:
+                  name: version
+                  valueNumeric: 1
+              - column:
+                  name: pan_prefix
+                  value: "999900"
+              - column:
+                  name: pan_length
+                  valueNumeric: 16
+              - column:
+                  name: delivery_countries
+                  value: '["GB","IE"]'
+              - column:
+                  name: required_address_fields
+                  value: '["line1","city","postcode","country"]'
+              - column:
+                  name: bureau_base_url
+                  value: "${bureauBaseUrl}"
+              - column:
+                  name: effective_from
+                  valueComputed: CURRENT_TIMESTAMP
+      rollback:
+        - delete:
+            tableName: issuing_config
+            where: "version = 1 AND pan_prefix = '999900'"

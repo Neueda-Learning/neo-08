@@ -6,3 +6,5 @@ databaseChangeLog:
       file: db/changelog/changes/001-create-demo-showcase.yaml
   - include:
       file: db/changelog/changes/002-create-card-record.yaml
+  - include:
+      file: db/changelog/changes/003-support-failed-issue-retry.yaml
