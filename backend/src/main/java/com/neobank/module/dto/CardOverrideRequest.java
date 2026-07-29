@@ -4,13 +4,33 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/** Operator command for the UC-07 case-outcome override. */
+/**
+ * UC-07 manual override request.
+ */
 public record CardOverrideRequest(
-        @NotNull NewOutcome newOutcome,
-        @NotBlank @Size(max = 512) String reason,
-        @NotBlank @Size(max = 64) String operator) {
 
-    /** UC-07 deliberately excludes IN_PROGRESS from operator-selected outcomes. */
+        @NotNull(message = "newOutcome is required")
+        NewOutcome newOutcome,
+
+        @NotBlank(message = "reason is required")
+        @Size(
+                max = 512,
+                message = "reason must not exceed 512 characters"
+        )
+        String reason,
+
+        @NotBlank(message = "operator is required")
+        @Size(
+                max = 64,
+                message = "operator must not exceed 64 characters"
+        )
+        String operator
+
+) {
+
+    /**
+     * Operators may only choose a final outcome.
+     */
     public enum NewOutcome {
         ISSUED,
         FAILED
