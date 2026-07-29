@@ -35,7 +35,7 @@ public class CardCaseController {
                 .body(result.cases());
     }
 
-//    @GetMapping("/{applicationId}/applicant")
+//    @GetMapping("/{applicationId}/applicant_info")
 //    public ResponseEntity<JsonNode> applicant(@PathVariable String applicationId) {
 //        return ResponseEntity.ok(searches.getApplicant(applicationId));
 //    }
