@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   ChipGroup,
@@ -8,112 +8,98 @@ import {
   MetricTile,
   PageHeader,
   SearchInput,
+  Spinner,
   Toolbar,
 } from '../design-system';
+import { api } from '../api.js';
 import { outcomeTone, bureauStatusTone, OUTCOMES, time } from '../status.js';
 
 const FILTERS = ['All', ...OUTCOMES];
-
-// --- Mock data (UC acceptance criteria checkpoint values) ---
-const MOCK = [
-  {
-    applicationId: 'app-1234',
-    reference: 'crd-000064',
-    applicantName: 'Maria Nowak',
-    outcome: 'ISSUED',
-    panLast4: '4242',
-    bureauStatus: 'DISPATCHED',
-    dispatchRef: 'RM-2214-9915',
-    accountId: 'acc-000123',
-    productCode: 'CREDIT_CARD_REWARDS',
-    issuedAt: '2026-07-22T09:21:00Z',
-  },
-  {
-    applicationId: 'app-1235',
-    reference: 'crd-000065',
-    applicantName: 'James Chen',
-    outcome: 'ISSUED',
-    panLast4: '7812',
-    bureauStatus: 'PERSONALISED',
-    dispatchRef: null,
-    accountId: 'acc-000124',
-    productCode: 'DEBIT_CARD_STANDARD',
-    issuedAt: '2026-07-22T10:05:00Z',
-  },
-  {
-    applicationId: 'app-1236',
-    reference: 'crd-000066',
-    applicantName: 'Elena Rossi',
-    outcome: 'IN_PROGRESS',
-    panLast4: null,
-    bureauStatus: null,
-    dispatchRef: null,
-    accountId: 'acc-000125',
-    productCode: 'CREDIT_CARD_REWARDS',
-    issuedAt: null,
-  },
-  {
-    applicationId: 'app-1237',
-    reference: 'crd-000067',
-    applicantName: 'Sofia Andersson',
-    outcome: 'FAILED',
-    panLast4: null,
-    bureauStatus: null,
-    dispatchRef: null,
-    accountId: 'acc-000126',
-    productCode: 'CREDIT_CARD_REWARDS',
-    issuedAt: null,
-    reason: 'CRD_DELIVERY_ADDRESS_INVALID',
-  },
-  {
-    applicationId: 'app-1240',
-    reference: 'crd-000070',
-    applicantName: 'Tom Baker',
-    outcome: 'FAILED',
-    panLast4: null,
-    bureauStatus: null,
-    dispatchRef: null,
-    accountId: 'acc-000129',
-    productCode: 'DEBIT_CARD_PREMIUM',
-    issuedAt: null,
-    reason: 'CRD_BUREAU_UNAVAILABLE',
-  },
-];
 
 function maskPan(last4) {
   if (!last4) return '—';
   return `**** **** **** ${last4}`;
 }
 
+/** Hydrate applicant names + product codes for a batch of card summaries. */
+async function hydrate(cases) {
+  const hydrated = await Promise.all(
+    cases.map(async (c) => {
+      try {
+        const applicant = await api.getApplicant(c.applicationId);
+        return {
+          ...c,
+          applicantName: applicant.fullName,
+          productCode: applicant.productCode,
+        };
+      } catch {
+        // applicant lookup failed — still show the row without a name
+        return { ...c, applicantName: null, productCode: null };
+      }
+    })
+  );
+  return hydrated;
+}
+
 export default function CardBoard({ onSelectCard }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
+  const [cards, setCards] = useState(null); // null = haven't searched yet
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState(null);
+  const timer = useRef(null);
 
-  const counts = useMemo(
-    () =>
-      MOCK.reduce((acc, r) => {
-        acc[r.outcome] = (acc[r.outcome] ?? 0) + 1;
-        return acc;
-      }, {}),
-    []
-  );
+  const doSearch = useCallback(async (q) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { body, headers } = await api.searchCards(q);
+      setHasMore(headers.get('X-Has-More') === 'true');
+      const hydrated = await hydrate(body);
+      setCards(hydrated);
+    } catch (err) {
+      setError(err.message);
+      setCards([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const needle = query.trim();
+    if (!needle) {
+      setCards(null);
+      setHasMore(false);
+      return;
+    }
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => doSearch(needle), 300);
+    return () => clearTimeout(timer.current);
+  }, [query, doSearch]);
+
+  const counts = useMemo(() => {
+    if (!cards) return {};
+    return cards.reduce((acc, r) => {
+      acc[r.outcome] = (acc[r.outcome] ?? 0) + 1;
+      return acc;
+    }, {});
+  }, [cards]);
 
   const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return MOCK.filter((r) => {
-      if (filter !== 'All' && r.outcome !== filter) return false;
-      if (!needle) return true;
-      return (
-        r.applicationId.toLowerCase().includes(needle) ||
-        r.reference.toLowerCase().includes(needle) ||
-        (r.applicantName && r.applicantName.toLowerCase().includes(needle))
-      );
-    });
-  }, [query, filter]);
+    if (!cards) return [];
+    if (filter === 'All') return cards;
+    return cards.filter((r) => r.outcome === filter);
+  }, [cards, filter]);
 
   const columns = [
-    { key: 'reference', header: 'Reference', mono: true },
-    { key: 'applicantName', header: 'Applicant' },
+    { key: 'applicationId', header: 'Application', mono: true },
+    {
+      key: 'applicantName',
+      header: 'Applicant',
+      render: (r) => r.applicantName ?? '—',
+    },
     {
       key: 'panLast4',
       header: 'Card',
@@ -141,15 +127,19 @@ export default function CardBoard({ onSelectCard }) {
     { key: 'issuedAt', header: 'Issued', render: (r) => time(r.issuedAt) },
   ];
 
+  const footnote = [hasMore && 'more results available — refine your search', 'newest first']
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <>
       <PageHeader
         title="Card Board"
-        lede="search by application id, reference or applicant name · newest first · max 10 rows"
+        lede="search by application id or applicant name · newest first · max 10 rows"
       />
 
       <Grid cols={4} min={120} style={{ marginBottom: 'var(--ds-space-6)' }}>
-        <MetricTile label="Total" value={MOCK.length} />
+        <MetricTile label="Total" value={cards?.length ?? 0} />
         <MetricTile label="In Progress" value={counts.IN_PROGRESS ?? 0} tone="info" />
         <MetricTile label="Issued" value={counts.ISSUED ?? 0} tone="positive" />
         <MetricTile label="Failed" value={counts.FAILED ?? 0} tone="negative" />
@@ -158,7 +148,7 @@ export default function CardBoard({ onSelectCard }) {
       <Toolbar>
         <SearchInput
           grow
-          placeholder="Application id, reference or name"
+          placeholder="Application id or applicant name"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search cards"
@@ -166,23 +156,35 @@ export default function CardBoard({ onSelectCard }) {
         <ChipGroup options={FILTERS} value={filter} onChange={setFilter} counts={counts} />
       </Toolbar>
 
-      <DataTable
-        columns={columns}
-        rows={matches}
-        total={matches.length}
-        rowKey={(r) => r.applicationId}
-        footnote="newest first"
-        onRowClick={onSelectCard}
-        empty={
-          <EmptyState
-            title={query ? 'No cards match that search' : 'Search to see cards'}
-          >
-            {query
-              ? 'Clear the search, or pick a different outcome.'
-              : 'Enter an application id, reference or applicant name to find card records.'}
-          </EmptyState>
-        }
-      />
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 'var(--ds-space-8)' }}>
+          <Spinner />
+        </div>
+      )}
+
+      {error && !loading && (
+        <EmptyState title="Search failed">{error}</EmptyState>
+      )}
+
+      {!loading && !error && (
+        <DataTable
+          columns={columns}
+          rows={matches}
+          total={matches.length}
+          rowKey={(r) => r.applicationId}
+          footnote={cards ? footnote : undefined}
+          onRowClick={onSelectCard}
+          empty={
+            <EmptyState
+              title={cards === null ? 'Search to see cards' : 'No cards match that search'}
+            >
+              {cards === null
+                ? 'Enter an application id or applicant name to find card records.'
+                : 'Clear the search, or pick a different outcome.'}
+            </EmptyState>
+          }
+        />
+      )}
     </>
   );
 }
