@@ -12,87 +12,39 @@ import org.springframework.stereotype.Service;
 @Service
 public class CardIntakeService {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(CardIntakeService.class);
+    private static final Logger log = LoggerFactory.getLogger(CardIntakeService.class);
 
     private final Executor executor;
     private final CardRecordWriter writer;
-    private final CardIssuingService cardIssuingService;
+    private final CardIssueProcessor issues;
 
-    public CardIntakeService(
-            @Qualifier("applicationTaskExecutor")
-            Executor executor,
-            CardRecordWriter writer,
-            CardIssuingService cardIssuingService) {
-
+    public CardIntakeService(@Qualifier("applicationTaskExecutor") Executor executor,
+                             CardRecordWriter writer,
+                             CardIssueProcessor issues) {
         this.executor = executor;
         this.writer = writer;
-        this.cardIssuingService = cardIssuingService;
+        this.issues = issues;
     }
 
     public void accept(CardExecuteRequest request) {
-
-        String applicationId =
-                request.applicationId();
-
-        log.info(
-                "Received card application {}",
-                applicationId
-        );
-
-        boolean inserted =
-                writer.insertIfAbsent(applicationId);
-
-        log.info(
-                "Card application {} inserted={}",
-                applicationId,
-                inserted
-        );
-
-        if (!inserted) {
-            log.info(
-                    "Card application {} already exists; "
-                            + "skipping async processing",
-                    applicationId
-            );
+        String applicationId = request.applicationId();
+        if (!writer.insertIfAbsent(applicationId)) {
+            submit(
+                    applicationId,
+                    () -> issues.replayStoredOutcome(applicationId),
+                    "decision replay");
             return;
         }
 
-        try {
-            executor.execute(() -> {
-                log.info(
-                        "Worker started for {}",
-                        applicationId
-                );
-
-                processOffThread(request);
-            });
-
-            log.info(
-                    "Card application {} submitted to worker",
-                    applicationId
-            );
-
-        } catch (RejectedExecutionException exception) {
-            log.warn(
-                    "Worker rejected card application {}",
-                    applicationId,
-                    exception
-            );
-        }
+        submit(applicationId, () -> issues.process(request), "card issue");
     }
-    private void processOffThread(
-            CardExecuteRequest request) {
 
+    private void submit(String applicationId, Runnable work, String description) {
         try {
-
-            cardIssuingService.process(request);
-        } catch (RuntimeException exception) {
-            log.error(
-                    "Unexpected card issuing error for {}",
-                    request.applicationId(),
-                    exception
-            );
+            executor.execute(work);
+        } catch (RejectedExecutionException rejected) {
+            log.warn("Worker rejected {} for {}; the durable row remains available",
+                    description, applicationId, rejected);
         }
     }
 }
