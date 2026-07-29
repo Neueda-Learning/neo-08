@@ -31,33 +31,61 @@ public class CardIntakeService {
     }
 
     public void accept(CardExecuteRequest request) {
-        String applicationId = request.applicationId();
+
+        String applicationId =
+                request.applicationId();
+
+        log.info(
+                "Received card application {}",
+                applicationId
+        );
 
         boolean inserted =
                 writer.insertIfAbsent(applicationId);
 
+        log.info(
+                "Card application {} inserted={}",
+                applicationId,
+                inserted
+        );
+
         if (!inserted) {
+            log.info(
+                    "Card application {} already exists; "
+                            + "skipping async processing",
+                    applicationId
+            );
             return;
         }
 
         try {
-            executor.execute(
-                    () -> processOffThread(request)
+            executor.execute(() -> {
+                log.info(
+                        "Worker started for {}",
+                        applicationId
+                );
+
+                processOffThread(request);
+            });
+
+            log.info(
+                    "Card application {} submitted to worker",
+                    applicationId
             );
+
         } catch (RejectedExecutionException exception) {
             log.warn(
-                    "Worker rejected card application {}; "
-                            + "the IN_PROGRESS row remains durable",
+                    "Worker rejected card application {}",
                     applicationId,
                     exception
             );
         }
     }
-
     private void processOffThread(
             CardExecuteRequest request) {
 
         try {
+            log.info("1111111");
             cardIssuingService.process(request);
         } catch (RuntimeException exception) {
             log.error(
