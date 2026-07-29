@@ -260,17 +260,10 @@ public class FailedIssueService {
 
         /*
          * A corrected address must not be supplied
-         * for Bureau-unavailable failures.
+         * for Bureau-unavailable failures — silently
+         * ignore it and use the original address from
+         * the orchestrator instead.
          */
-        if (supplied != null) {
-            throw validation(
-                    Map.of(
-                            "correctedAddress",
-                            "is allowed only for "
-                                    + "CRD_DELIVERY_ADDRESS_INVALID"
-                    )
-            );
-        }
 
         /*
          * For a Bureau-unavailable retry, obtain the

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
-  Card,
   DataTable,
   EmptyState,
   Field,
@@ -10,14 +9,13 @@ import {
   FormGrid,
   Modal,
   PageHeader,
-  Section,
   Spinner,
   Stack,
   TextInput,
 } from '../design-system';
 import { api } from '../api.js';
 
-const ADDRESS_FIELDS = ['line1', 'line2', 'city', 'postcode', 'country'];
+const ADDRESS_FIELDS = ['line1', 'city', 'postcode', 'country'];
 
 function emptyAddress() {
   return Object.fromEntries(ADDRESS_FIELDS.map((f) => [f, '']));
@@ -29,8 +27,8 @@ export default function FailedQueue() {
   const [error, setError] = useState(null);
   const [names, setNames] = useState({});
 
-  // Modal state
-  const [modal, setModal] = useState(null); // { applicationId, reason }
+  // Modal state — type: 'address' (UC04 address fix) or 'confirm' (bureau retry)
+  const [modal, setModal] = useState(null); // { type, applicationId, reason }
   const [addr, setAddr] = useState(emptyAddress());
   const [addrError, setAddrError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -40,7 +38,6 @@ export default function FailedQueue() {
     api.getFailedQueue()
       .then(async (list) => {
         setRows(list);
-        // Hydrate applicant names in parallel
         const nameMap = {};
         await Promise.all(
           list.map((r) =>
@@ -56,29 +53,13 @@ export default function FailedQueue() {
   }, []);
 
   function openAddressModal(row) {
-    setModal({ applicationId: row.applicationId, reason: row.reason });
+    setModal({ type: 'address', applicationId: row.applicationId, reason: row.reason });
     setAddr(emptyAddress());
     setAddrError(null);
   }
 
-  async function handleRetry(row) {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.retryFailedIssue(row.applicationId);
-      // Reload queue
-      const list = await api.getFailedQueue();
-      setRows(list);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function handleAddressRetry() {
     setAddrError(null);
-    // Simple validation
     const missing = ADDRESS_FIELDS.filter((f) => !addr[f].trim());
     if (missing.length > 0) {
       setAddrError(`Missing: ${missing.join(', ')}`);
@@ -95,6 +76,20 @@ export default function FailedQueue() {
       setRows(list);
     } catch (err) {
       setAddrError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleBureauRetry() {
+    setSaving(true);
+    try {
+      await api.retryFailedIssue(modal.applicationId);
+      setModal(null);
+      const list = await api.getFailedQueue();
+      setRows(list);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setSaving(false);
     }
@@ -145,7 +140,11 @@ export default function FailedQueue() {
           );
         }
         return (
-          <Button variant="primary" size="sm" disabled={saving} onClick={() => handleRetry(r)}>
+          <Button variant="primary" size="sm" disabled={saving} onClick={() => setModal({
+            type: 'confirm',
+            applicationId: r.applicationId,
+            reason: r.reason,
+          })}>
             Retry
           </Button>
         );
@@ -187,20 +186,20 @@ export default function FailedQueue() {
         }
       />
 
-      {modal && (
+      {modal && modal.type === 'address' && (
         <Modal
+          open
           title="Fix delivery address"
           onClose={() => setModal(null)}
         >
           <Stack>
             <FormGrid cols={2}>
               {ADDRESS_FIELDS.map((f) => (
-                <Field key={f} label={f.charAt(0).toUpperCase() + f.slice(1)} required={f !== 'line2'}>
+                <Field key={f} label={f.charAt(0).toUpperCase() + f.slice(1)} required>
                   {({ id }) => (
                     <TextInput
                       id={id}
                       value={addr[f]}
-                      placeholder={f === 'line2' ? '(optional)' : undefined}
                       onChange={(e) => setAddr((prev) => ({ ...prev, [f]: e.target.value }))}
                     />
                   )}
@@ -221,6 +220,31 @@ export default function FailedQueue() {
               </Button>
             </FormActions>
           </Stack>
+        </Modal>
+      )}
+
+      {modal && modal.type === 'confirm' && (
+        <Modal
+          open
+          title="Confirm retry"
+          onClose={() => setModal(null)}
+          footer={
+            <div style={{ display: 'flex', gap: 'var(--ds-space-2)', justifyContent: 'flex-end' }}>
+              <Button variant="ghost" size="sm" onClick={() => setModal(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" disabled={saving} onClick={handleBureauRetry}>
+                {saving ? 'Retrying…' : 'Confirm retry'}
+              </Button>
+            </div>
+          }
+        >
+          <p style={{ fontSize: 'var(--ds-text-sm)' }}>
+            Retry application <strong>{modal.applicationId}</strong>?
+          </p>
+          <p style={{ fontSize: 'var(--ds-text-sm)', color: 'var(--ds-tone-negative-accent)' }}>
+            Reason: <Badge tone="negative">{modal.reason}</Badge>
+          </p>
         </Modal>
       )}
     </>
