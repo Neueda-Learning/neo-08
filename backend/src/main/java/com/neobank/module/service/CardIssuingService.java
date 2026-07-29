@@ -8,6 +8,7 @@ import com.neobank.module.model.CardOutcome;
 import com.neobank.module.model.CardRecord;
 import com.neobank.module.model.IssuingConfig;
 import com.neobank.module.repository.CardRecordRepository;
+import com.neobank.module.repository.CardTimelineRepository;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
@@ -16,44 +17,77 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CardIssuingService {
 
-    private final CardRecordRepository cardRecordRepository;
-    private final IssuingConfigService issuingConfigService;
-    private final MockBureauService mockBureauService;
+    private final CardRecordRepository
+            cardRecordRepository;
+
+    private final IssuingConfigService
+            issuingConfigService;
+
+    private final MockBureauService
+            mockBureauService;
+
+    private final CardTimelineRepository
+            cardTimelineRepository;
 
     public CardIssuingService(
             CardRecordRepository cardRecordRepository,
             IssuingConfigService issuingConfigService,
-            MockBureauService mockBureauService) {
+            MockBureauService mockBureauService,
+            CardTimelineRepository
+                    cardTimelineRepository) {
 
-        this.cardRecordRepository = cardRecordRepository;
-        this.issuingConfigService = issuingConfigService;
-        this.mockBureauService = mockBureauService;
+        this.cardRecordRepository =
+                cardRecordRepository;
+
+        this.issuingConfigService =
+                issuingConfigService;
+
+        this.mockBureauService =
+                mockBureauService;
+
+        this.cardTimelineRepository =
+                cardTimelineRepository;
     }
 
     /**
-     * Processes the card application after UC00 has inserted
-     * the durable IN_PROGRESS CardRecord.
+     * Processes the card application after UC00
+     * has inserted the durable IN_PROGRESS row.
      */
     @Transactional
-    public void process(CardExecuteRequest request) {
+    public void process(
+            CardExecuteRequest request) {
 
-        CardRecord record = cardRecordRepository
-                .findById(request.applicationId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Card record not found: "
-                                + request.applicationId()
-                ));
+        CardRecord record =
+                cardRecordRepository
+                        .findById(
+                                request.applicationId()
+                        )
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "Card record not found: "
+                                                + request
+                                                .applicationId()
+                                )
+                        );
 
-        // Prevent duplicate processing.
-        if (record.getOutcome() != CardOutcome.IN_PROGRESS) {
+        /*
+         * Prevent duplicate processing.
+         */
+        if (record.getOutcome()
+                != CardOutcome.IN_PROGRESS) {
+
             return;
         }
 
         IssuingConfig config =
-                issuingConfigService.getCurrentConfig();
+                issuingConfigService
+                        .getCurrentConfig();
 
         try {
-            validateDeliveryAddress(request, config);
+            validateDeliveryAddress(
+                    request,
+                    config
+            );
 
             MockBureauService.BureauResult bureau =
                     mockBureauService.createCard(
@@ -63,7 +97,7 @@ public class CardIssuingService {
             /*
              * The case becomes ISSUED only after:
              * 1. delivery validation succeeds;
-             * 2. the bureau accepts the card.
+             * 2. the Bureau accepts the card.
              */
             record.markIssued(
                     bureau.bureauCardId(),
@@ -71,13 +105,28 @@ public class CardIssuingService {
                     config.getVersion()
             );
 
-        } catch (InvalidDeliveryAddressException exception) {
+            /*
+             * UC06 initial timeline entry.
+             *
+             * Later status changes are written by
+             * BureauStatusPoller with source POLL.
+             */
+            cardTimelineRepository
+                    .recordInitialRequested(
+                            request.applicationId()
+                    );
+
+        } catch (
+                InvalidDeliveryAddressException
+                        exception) {
 
             record.markFailed(
                     "CRD_DELIVERY_ADDRESS_INVALID"
             );
 
-        } catch (BureauUnavailableException exception) {
+        } catch (
+                BureauUnavailableException
+                        exception) {
 
             record.markFailed(
                     "CRD_BUREAU_UNAVAILABLE"
@@ -86,14 +135,15 @@ public class CardIssuingService {
     }
 
     /**
-     * Validates the effective delivery address using
-     * the current UC08 issuing configuration.
+     * Validates the effective delivery address
+     * using the current UC08 configuration.
      */
     private void validateDeliveryAddress(
             CardExecuteRequest request,
             IssuingConfig config) {
 
-        JsonNode application = request.application();
+        JsonNode application =
+                request.application();
 
         if (application == null
                 || application.isNull()
@@ -104,7 +154,8 @@ public class CardIssuingService {
             );
         }
 
-        JsonNode delivery = application.get("delivery");
+        JsonNode delivery =
+                application.get("delivery");
 
         if (delivery == null
                 || delivery.isNull()
@@ -116,23 +167,33 @@ public class CardIssuingService {
         }
 
         JsonNode useCurrentAddressNode =
-                delivery.get("useCurrentAddress");
+                delivery.get(
+                        "useCurrentAddress"
+                );
 
         if (useCurrentAddressNode == null
                 || useCurrentAddressNode.isNull()
-                || !useCurrentAddressNode.isBoolean()) {
+                || !useCurrentAddressNode
+                .isBoolean()) {
 
             throw new InvalidDeliveryAddressException(
-                    "delivery.useCurrentAddress is required"
+                    "delivery.useCurrentAddress "
+                            + "is required"
             );
         }
 
         boolean useCurrentAddress =
-                useCurrentAddressNode.booleanValue();
+                useCurrentAddressNode
+                        .booleanValue();
 
-        JsonNode address = useCurrentAddress
-                ? getCurrentAddress(application)
-                : getAlternativeAddress(delivery);
+        JsonNode address =
+                useCurrentAddress
+                        ? getCurrentAddress(
+                        application
+                )
+                        : getAlternativeAddress(
+                        delivery
+                );
 
         validateAddressFields(
                 address,
@@ -152,7 +213,8 @@ public class CardIssuingService {
     private JsonNode getCurrentAddress(
             JsonNode application) {
 
-        JsonNode applicant = application.get("applicant");
+        JsonNode applicant =
+                application.get("applicant");
 
         if (applicant == null
                 || applicant.isNull()
@@ -164,11 +226,14 @@ public class CardIssuingService {
         }
 
         JsonNode currentAddress =
-                applicant.get("currentAddress");
+                applicant.get(
+                        "currentAddress"
+                );
 
         validateAddressObject(
                 currentAddress,
-                "Applicant current address is required"
+                "Applicant current address "
+                        + "is required"
         );
 
         return currentAddress;
@@ -186,7 +251,8 @@ public class CardIssuingService {
 
         validateAddressObject(
                 alternativeAddress,
-                "Alternative delivery address is required"
+                "Alternative delivery address "
+                        + "is required"
         );
 
         return alternativeAddress;
@@ -207,10 +273,7 @@ public class CardIssuingService {
     }
 
     /**
-     * Checks all fields configured by UC08.
-     *
-     * Seed config currently contains:
-     * line1, city, postcode and country.
+     * Checks every field configured by UC08.
      */
     private void validateAddressFields(
             JsonNode address,
@@ -220,12 +283,18 @@ public class CardIssuingService {
                 || requiredFields.isEmpty()) {
 
             throw new InvalidDeliveryAddressException(
-                    "No required address fields are configured"
+                    "No required address fields "
+                            + "are configured"
             );
         }
 
-        for (String fieldName : requiredFields) {
-            validateRequiredField(address, fieldName);
+        for (String fieldName :
+                requiredFields) {
+
+            validateRequiredField(
+                    address,
+                    fieldName
+            );
         }
     }
 
@@ -233,12 +302,14 @@ public class CardIssuingService {
             JsonNode address,
             String fieldName) {
 
-        JsonNode fieldValue = address.get(fieldName);
+        JsonNode fieldValue =
+                address.get(fieldName);
 
         if (fieldValue == null
                 || fieldValue.isNull()
                 || !fieldValue.isTextual()
-                || fieldValue.asText().isBlank()) {
+                || fieldValue.asText()
+                .isBlank()) {
 
             throw new InvalidDeliveryAddressException(
                     "Address field is required: "
@@ -248,42 +319,56 @@ public class CardIssuingService {
     }
 
     /**
-     * Checks that the address country is allowed
-     * by the current UC08 config.
+     * Checks that the effective delivery country
+     * is allowed by the current UC08 config.
      */
     private void validateDeliveryCountry(
             JsonNode address,
             List<String> deliveryCountries) {
 
-        JsonNode countryNode = address.get("country");
+        JsonNode countryNode =
+                address.get("country");
 
         if (countryNode == null
                 || countryNode.isNull()
                 || !countryNode.isTextual()
-                || countryNode.asText().isBlank()) {
+                || countryNode.asText()
+                .isBlank()) {
 
             throw new InvalidDeliveryAddressException(
-                    "Address field is required: country"
+                    "Address field is required: "
+                            + "country"
             );
         }
 
-        String country = countryNode
-                .asText()
-                .trim()
-                .toUpperCase(Locale.ROOT);
+        String country =
+                countryNode.asText()
+                        .trim()
+                        .toUpperCase(
+                                Locale.ROOT
+                        );
 
         boolean supported =
                 deliveryCountries != null
-                        && deliveryCountries.stream()
-                        .filter(value -> value != null)
-                        .map(value -> value
-                                .trim()
-                                .toUpperCase(Locale.ROOT))
-                        .anyMatch(country::equals);
+                        && deliveryCountries
+                        .stream()
+                        .filter(value ->
+                                value != null
+                        )
+                        .map(value ->
+                                value.trim()
+                                        .toUpperCase(
+                                                Locale.ROOT
+                                        )
+                        )
+                        .anyMatch(
+                                country::equals
+                        );
 
         if (!supported) {
             throw new InvalidDeliveryAddressException(
-                    "Delivery country is not supported: "
+                    "Delivery country is "
+                            + "not supported: "
                             + country
             );
         }
