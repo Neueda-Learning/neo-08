@@ -68,9 +68,7 @@ public class FailedIssueService {
                     HttpStatus.BAD_REQUEST, "failed card case has no retry reason");
         }
 
-        IssuingConfigSnapshot config = failed.findCurrentConfig()
-                .orElseThrow(() -> new FailedIssueException(
-                        HttpStatus.SERVICE_UNAVAILABLE, "IssuingConfig is not available"));
+        IssuingConfigSnapshot config = currentValidConfig();
 
         boolean manualAddress =
                 card.failureReason() == FailureReason.CRD_DELIVERY_ADDRESS_INVALID;
@@ -203,5 +201,23 @@ public class FailedIssueService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private IssuingConfigSnapshot currentValidConfig() {
+        try {
+            IssuingConfigSnapshot config = failed.findCurrentConfig().orElse(null);
+            if (!IssuingConfigValidator.isValid(config)) {
+                throw new FailedIssueException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "IssuingConfig is not available or invalid");
+            }
+            return config;
+        } catch (FailedIssueException expected) {
+            throw expected;
+        } catch (RuntimeException unreadableConfig) {
+            throw new FailedIssueException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "IssuingConfig is not available or invalid");
+        }
     }
 }

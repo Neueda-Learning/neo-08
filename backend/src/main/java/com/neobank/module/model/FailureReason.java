@@ -3,6 +3,7 @@ package com.neobank.module.model;
 /** Recoverable UC-04 issue failures. */
 public enum FailureReason {
     CRD_DELIVERY_ADDRESS_INVALID("Fix address & retry"),
+    CRD_ISSUING_CONFIG_INVALID("Fix issuing config & retry"),
     CRD_BUREAU_UNAVAILABLE("Retry");
 
     private final String action;

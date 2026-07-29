@@ -55,27 +55,46 @@ public class CardIssueProcessor {
             return;
         }
 
-        IssuingConfigSnapshot config = cards.findCurrentConfig().orElse(null);
-        if (config == null) {
-            log.error("Cannot issue card {} because IssuingConfig is unavailable",
-                    request.applicationId());
-            return;
-        }
-
         String accountId = text(request.outputs(), "accountId");
         String productCode = nestedText(request.application(), "product", "productCode");
         DeliveryAddress address = effectiveAddress(request.application());
         Instant attemptedAt = clock.instant();
 
-        if (!isDeliverable(address, config)) {
-            if (cards.markFailed(
-                    card.applicationId(),
-                    FailureReason.CRD_DELIVERY_ADDRESS_INVALID.name(),
+        IssuingConfigSnapshot config;
+        try {
+            config = cards.findCurrentConfig().orElse(null);
+        } catch (RuntimeException invalidConfig) {
+            log.error(
+                    "Cannot issue card {} because IssuingConfig cannot be read",
+                    request.applicationId());
+            fail(
+                    card,
+                    FailureReason.CRD_ISSUING_CONFIG_INVALID,
                     accountId,
                     productCode,
-                    attemptedAt)) {
-                reportFailed(card, FailureReason.CRD_DELIVERY_ADDRESS_INVALID.name());
-            }
+                    attemptedAt);
+            return;
+        }
+        if (!IssuingConfigValidator.isValid(config)) {
+            log.error(
+                    "Cannot issue card {} because IssuingConfig is missing or invalid",
+                    request.applicationId());
+            fail(
+                    card,
+                    FailureReason.CRD_ISSUING_CONFIG_INVALID,
+                    accountId,
+                    productCode,
+                    attemptedAt);
+            return;
+        }
+
+        if (!isDeliverable(address, config)) {
+            fail(
+                    card,
+                    FailureReason.CRD_DELIVERY_ADDRESS_INVALID,
+                    accountId,
+                    productCode,
+                    attemptedAt);
             return;
         }
 
@@ -93,14 +112,12 @@ public class CardIssueProcessor {
                         productCode));
 
         if (accepted.isEmpty()) {
-            if (cards.markFailed(
-                    card.applicationId(),
-                    FailureReason.CRD_BUREAU_UNAVAILABLE.name(),
+            fail(
+                    card,
+                    FailureReason.CRD_BUREAU_UNAVAILABLE,
                     accountId,
                     productCode,
-                    attemptedAt)) {
-                reportFailed(card, FailureReason.CRD_BUREAU_UNAVAILABLE.name());
-            }
+                    attemptedAt);
             return;
         }
 
@@ -142,6 +159,22 @@ public class CardIssueProcessor {
                 Decision.REFERRED,
                 "application-manual: FAILED; reason=" + reason
                         + "; reference=" + card.reference());
+    }
+
+    private void fail(
+            IntakeCard card,
+            FailureReason reason,
+            String accountId,
+            String productCode,
+            Instant attemptedAt) {
+        if (cards.markFailed(
+                card.applicationId(),
+                reason.name(),
+                accountId,
+                productCode,
+                attemptedAt)) {
+            reportFailed(card, reason.name());
+        }
     }
 
     private static DeliveryAddress effectiveAddress(JsonNode application) {
