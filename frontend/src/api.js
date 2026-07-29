@@ -76,7 +76,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
-  // UC 05 — Bureau Control Panel
+  // UC 07 — Override
+  overrideCase: (id, data) => request(`/cases/${id}/override`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
   getBureauDials: () => request('/bureau/admin/dials'),
   updateBureauDials: (data) => request('/bureau/admin/dials', {
     method: 'PUT',

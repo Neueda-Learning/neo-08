@@ -5,10 +5,14 @@ import {
   Card,
   EmptyState,
   KeyValue,
+  Modal,
   PageHeader,
   Section,
+  Select,
   Spinner,
   Stack,
+  Textarea,
+  TextInput,
 } from '../design-system';
 import { api } from '../api.js';
 import { outcomeTone, bureauStatusTone, time } from '../status.js';
@@ -19,6 +23,12 @@ export default function CardDetail({ selectedCard, onBack }) {
   const [timeline, setTimeline] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // UC 07 — Override modal
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideForm, setOverrideForm] = useState({ newOutcome: '', reason: '', operator: '' });
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false);
+  const [overrideError, setOverrideError] = useState(null);
 
   useEffect(() => {
     if (!selectedCard) return;
@@ -50,6 +60,25 @@ export default function CardDetail({ selectedCard, onBack }) {
 
     return () => { cancelled = true; };
   }, [selectedCard]);
+
+  const handleOverride = () => {
+    setOverrideSubmitting(true);
+    setOverrideError(null);
+    api.overrideCase(selectedCard.applicationId, overrideForm)
+      .then((updated) => {
+        setOverrideOpen(false);
+        setDetail(updated);
+        setOverrideForm({ newOutcome: '', reason: '', operator: '' });
+      })
+      .catch((err) => setOverrideError(err.message))
+      .finally(() => setOverrideSubmitting(false));
+  };
+
+  const openOverride = () => {
+    setOverrideForm({ newOutcome: '', reason: '', operator: '' });
+    setOverrideError(null);
+    setOverrideOpen(true);
+  };
 
   if (!selectedCard) {
     return (
@@ -85,11 +114,12 @@ export default function CardDetail({ selectedCard, onBack }) {
         <PageHeader
           title="Card Detail"
           lede={selectedCard.applicationId}
-        >
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            Back to board
-          </Button>
-        </PageHeader>
+          actions={
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              Back to board
+            </Button>
+          }
+        />
         <EmptyState title="Failed to load card">{error}</EmptyState>
       </>
     );
@@ -108,11 +138,20 @@ export default function CardDetail({ selectedCard, onBack }) {
 
   return (
     <>
-      <PageHeader title={title} lede={selectedCard.applicationId}>
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          Back to board
-        </Button>
-      </PageHeader>
+      <PageHeader
+        title={title}
+        lede={selectedCard.applicationId}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              Back to board
+            </Button>
+            <Button variant="outline" size="sm" onClick={openOverride}>
+              Override
+            </Button>
+          </>
+        }
+      ></PageHeader>
 
       <Stack>
         <Section title="Outcome">
@@ -206,6 +245,71 @@ export default function CardDetail({ selectedCard, onBack }) {
           </Section>
         )}
       </Stack>
+
+      <Modal
+        open={overrideOpen}
+        title="Override case"
+        onClose={() => setOverrideOpen(false)}
+        footer={
+          <div style={{ display: 'flex', gap: 'var(--ds-space-2)', justifyContent: 'flex-end' }}>
+            <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={
+                !overrideForm.newOutcome || !overrideForm.reason.trim() || !overrideForm.operator.trim() || overrideSubmitting
+              }
+              onClick={handleOverride}
+            >
+              {overrideSubmitting ? 'Submitting…' : 'Override'}
+            </Button>
+          </div>
+        }
+      >
+        <Stack>
+          {overrideError && (
+            <p className="ds-negative" style={{ fontSize: 'var(--ds-text-sm)' }}>
+              {overrideError}
+            </p>
+          )}
+
+          <div>
+            <label className="ds-label" style={{ display: 'block', marginBottom: 'var(--ds-space-1)' }}>
+              New outcome
+            </label>
+            <Select
+              value={overrideForm.newOutcome}
+              onChange={(e) =>
+                setOverrideForm({ ...overrideForm, newOutcome: e.target.value })
+              }
+            >
+              <option value="">Select…</option>
+              <option value="ISSUED">ISSUED</option>
+              <option value="FAILED">FAILED</option>
+            </Select>
+          </div>
+
+          <TextInput
+            label="Operator"
+            value={overrideForm.operator}
+            onChange={(e) =>
+              setOverrideForm({ ...overrideForm, operator: e.target.value })
+            }
+            placeholder="e.g. b.dimovski"
+          />
+
+          <Textarea
+            label="Reason"
+            value={overrideForm.reason}
+            onChange={(e) =>
+              setOverrideForm({ ...overrideForm, reason: e.target.value })
+            }
+            placeholder="Why this manual override…"
+          />
+        </Stack>
+      </Modal>
     </>
   );
 }
