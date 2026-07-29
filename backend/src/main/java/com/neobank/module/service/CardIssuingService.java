@@ -2,6 +2,7 @@ package com.neobank.module.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.neobank.module.dto.CardExecuteRequest;
+import com.neobank.module.dto.IssuingConfigSnapshot;
 import com.neobank.module.exception.BureauUnavailableException;
 import com.neobank.module.exception.InvalidDeliveryAddressException;
 import com.neobank.module.model.CardOutcome;
@@ -26,6 +27,9 @@ public class CardIssuingService {
     private final MockBureauService
             mockBureauService;
 
+    private final CardPanGenerator
+            cardPanGenerator;
+
     private final CardTimelineRepository
             cardTimelineRepository;
 
@@ -33,6 +37,7 @@ public class CardIssuingService {
             CardRecordRepository cardRecordRepository,
             IssuingConfigService issuingConfigService,
             MockBureauService mockBureauService,
+            CardPanGenerator cardPanGenerator,
             CardTimelineRepository
                     cardTimelineRepository) {
 
@@ -44,6 +49,9 @@ public class CardIssuingService {
 
         this.mockBureauService =
                 mockBureauService;
+
+        this.cardPanGenerator =
+                cardPanGenerator;
 
         this.cardTimelineRepository =
                 cardTimelineRepository;
@@ -84,11 +92,48 @@ public class CardIssuingService {
                         .getCurrentConfig();
 
         try {
+            /*
+             * Validate the effective delivery address
+             * before generating a PAN.
+             */
             validateDeliveryAddress(
                     request,
                     config
             );
 
+            /*
+             * CardPanGenerator currently accepts an
+             * IssuingConfigSnapshot rather than the
+             * JPA IssuingConfig entity.
+             */
+            IssuingConfigSnapshot configSnapshot =
+                    new IssuingConfigSnapshot(
+                            config.getVersion(),
+                            config.getPanPrefix(),
+                            config.getPanLength(),
+                            config.getDeliveryCountries(),
+                            config.getRequiredAddressFields(),
+                            config.getBureauBaseUrl()
+                    );
+
+            /*
+             * Generate a new Luhn-valid PAN.
+             *
+             * fullPan exists only in memory.
+             * Only last4 and hash will be persisted.
+             */
+            CardPanGenerator.GeneratedPan pan =
+                    cardPanGenerator.generate(
+                            request.applicationId(),
+                            configSnapshot,
+                            record.getPanLast4(),
+                            record.getPanHash()
+                    );
+
+            /*
+             * Direct internal service call.
+             * No HTTP bureau URL is used here.
+             */
             MockBureauService.BureauResult bureau =
                     mockBureauService.createCard(
                             request.applicationId()
@@ -97,9 +142,12 @@ public class CardIssuingService {
             /*
              * The case becomes ISSUED only after:
              * 1. delivery validation succeeds;
-             * 2. the Bureau accepts the card.
+             * 2. a PAN is generated;
+             * 3. the Bureau accepts the card.
              */
             record.markIssued(
+                    pan.last4(),
+                    pan.hash(),
                     bureau.bureauCardId(),
                     bureau.status(),
                     config.getVersion()
