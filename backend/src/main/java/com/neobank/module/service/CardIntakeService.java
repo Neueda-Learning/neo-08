@@ -17,29 +17,35 @@ public class CardIntakeService {
 
     private final Executor executor;
     private final CardRecordWriter writer;
+    private final CardIssueProcessor issues;
 
     public CardIntakeService(@Qualifier("applicationTaskExecutor") Executor executor,
-                             CardRecordWriter writer) {
+                             CardRecordWriter writer,
+                             CardIssueProcessor issues) {
         this.executor = executor;
         this.writer = writer;
+        this.issues = issues;
     }
 
     public void accept(CardExecuteRequest request) {
         String applicationId = request.applicationId();
         if (!writer.insertIfAbsent(applicationId)) {
+            submit(
+                    applicationId,
+                    () -> issues.replayStoredOutcome(applicationId),
+                    "decision replay");
             return;
         }
 
-        try {
-            executor.execute(() -> processOffThread(request));
-        } catch (RejectedExecutionException rejected) {
-            log.warn("Worker rejected card application {}; the IN_PROGRESS row remains durable",
-                    applicationId, rejected);
-        }
+        submit(applicationId, () -> issues.process(request), "card issue");
     }
 
-    private void processOffThread(CardExecuteRequest request) {
-        // UC-00 stops at the memory-only hand-off. Later use cases replace this body.
-        log.info("Card application {} handed to the worker", request.applicationId());
+    private void submit(String applicationId, Runnable work, String description) {
+        try {
+            executor.execute(work);
+        } catch (RejectedExecutionException rejected) {
+            log.warn("Worker rejected {} for {}; the durable row remains available",
+                    description, applicationId, rejected);
+        }
     }
 }
