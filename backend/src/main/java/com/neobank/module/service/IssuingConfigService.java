@@ -1,16 +1,15 @@
 package com.neobank.module.service;
 
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neobank.module.dto.CreateIssuingConfigRequest;
 import com.neobank.module.dto.CreateIssuingConfigResponse;
 import com.neobank.module.model.IssuingConfig;
 import com.neobank.module.repository.IssuingConfigRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.Set;
 
 @Service
 public class IssuingConfigService {
@@ -46,7 +45,6 @@ public class IssuingConfigService {
                 .map(config -> config.getVersion() + 1)
                 .orElse(1);
 
-
         IssuingConfig config = new IssuingConfig(
                 nextVersion,
                 request.panPrefix(),
@@ -63,6 +61,24 @@ public class IssuingConfigService {
         return new CreateIssuingConfigResponse(
                 savedConfig.getVersion()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public IssuingConfig getCurrentConfig() {
+
+        return repository
+                .findTopByOrderByVersionDesc()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "No issuing configuration found"
+                        )
+                );
+    }
+
+    @Transactional(readOnly = true)
+    public List<IssuingConfig> getHistory() {
+
+        return repository.findAllByOrderByVersionDesc();
     }
 
     private void validateCreateRequest(
@@ -82,18 +98,4 @@ public class IssuingConfigService {
             );
         }
     }
-
-
-    @Transactional(readOnly = true)
-    public IssuingConfig getCurrentConfig() {
-        return repository
-                .findTopByOrderByVersionDesc()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "No issuing configuration found"
-                        )
-                );
-    }
-
-
 }
