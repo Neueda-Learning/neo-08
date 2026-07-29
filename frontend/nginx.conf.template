@@ -37,6 +37,24 @@ server {
     proxy_pass http://$api_backend:8080$uri$is_args$args;
   }
 
+  # Module-specific API paths — proxied to the backend just like /api/.
+  location ^~ ${BASE_PATH}/cases {
+    set $cases_backend ${BACKEND_HOST};
+    proxy_pass http://$cases_backend:8080;
+  }
+  location ^~ ${BASE_PATH}/config {
+    set $config_backend ${BACKEND_HOST};
+    proxy_pass http://$config_backend:8080;
+  }
+  location ^~ ${BASE_PATH}/bureau {
+    set $bureau_backend ${BACKEND_HOST};
+    proxy_pass http://$bureau_backend:8080;
+  }
+  location ^~ ${BASE_PATH}/queue {
+    set $queue_backend ${BACKEND_HOST};
+    proxy_pass http://$queue_backend:8080;
+  }
+
   # Exact matches, so they also beat the regex below. The ALB target group health-checks
   # ${BASE_PATH}/health directly, bypassing its own routing rules — if this path and the
   # target group's HealthCheckPath ever disagree, every task is killed as unhealthy and

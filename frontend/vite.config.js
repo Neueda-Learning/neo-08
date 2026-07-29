@@ -20,6 +20,10 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: BACKEND, changeOrigin: true },
+      '/cases': { target: BACKEND, changeOrigin: true },
+      '/config': { target: BACKEND, changeOrigin: true },
+      '/bureau': { target: BACKEND, changeOrigin: true },
+      '/queue': { target: BACKEND, changeOrigin: true },
       '/health': { target: BACKEND, changeOrigin: true },
       '/info': { target: BACKEND, changeOrigin: true },
     },
