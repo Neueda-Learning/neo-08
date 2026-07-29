@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-add-card-reason-code
+      author: Tan
+      changes:
+        - addColumn:
+            tableName: card_record
+            columns:
+              - column:
+                  name: reason_code
+                  type: VARCHAR(64)
+                  remarks: Reason code for the current card outcome

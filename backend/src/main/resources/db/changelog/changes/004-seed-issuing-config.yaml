@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-seed-issuing-config
+      author: neo-08
+      changes:
+        - insert:
+            tableName: issuing_config
+            columns:
+              - column:
+                  name: version
+                  valueNumeric: 1
+              - column:
+                  name: pan_prefix
+                  value: "999900"
+              - column:
+                  name: pan_length
+                  valueNumeric: 16
+              - column:
+                  name: delivery_countries
+                  value: '["GB","IE"]'
+              - column:
+                  name: required_address_fields
+                  value: '["line1","city","postcode","country"]'
+              - column:
+                  name: bureau_base_url
+                  value: "http://mock-bureau:8091"
+              - column:
+                  name: effective_from
+                  valueDate: "2026-01-01T00:00:00"
