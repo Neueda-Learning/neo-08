@@ -16,3 +16,4 @@ frontend/dist/
 
 # Local env overrides
 .env
+/module-08-card-issuing-docs/
