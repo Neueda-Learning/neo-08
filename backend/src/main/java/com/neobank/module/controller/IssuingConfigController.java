@@ -32,11 +32,6 @@ public class IssuingConfigController {
                 .body(response);
     }
 
-    @GetMapping("/hello")
-    public String hello() {
-        return "Hello World";
-    }
-
     @GetMapping("/current")
     public ResponseEntity<IssuingConfig> getCurrent() {
 
