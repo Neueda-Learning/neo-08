@@ -11,11 +11,12 @@ import {
   Stack,
 } from '../design-system';
 import { api } from '../api.js';
-import { outcomeTone, bureauStatusTone } from '../status.js';
+import { outcomeTone, bureauStatusTone, time } from '../status.js';
 
 export default function CardDetail({ selectedCard, onBack }) {
   const [detail, setDetail] = useState(null);
   const [applicant, setApplicant] = useState(null);
+  const [timeline, setTimeline] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -26,15 +27,18 @@ export default function CardDetail({ selectedCard, onBack }) {
     setError(null);
     setDetail(null);
     setApplicant(null);
+    setTimeline(null);
 
     Promise.all([
       api.getCardDetail(selectedCard.applicationId),
       api.getApplicant(selectedCard.applicationId),
+      api.getCardTimeline(selectedCard.applicationId),
     ])
-      .then(([d, a]) => {
+      .then(([d, a, t]) => {
         if (cancelled) return;
         setDetail(d);
         setApplicant(a);
+        setTimeline(t);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -173,6 +177,34 @@ export default function CardDetail({ selectedCard, onBack }) {
             />
           </Card>
         </Section>
+
+        {detail.outcome === 'ISSUED' && (
+          <Section title="Timeline">
+            <Card>
+              {!timeline || timeline.length === 0 ? (
+                <p className="ds-muted" style={{ padding: 'var(--ds-space-2)' }}>
+                  {timeline === null ? 'Loading…' : 'No lifecycle events yet — the poller checks every few seconds.'}
+                </p>
+              ) : (
+                <KeyValue
+                  items={timeline.map((entry) => ({
+                    label: (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)' }}>
+                        <Badge tone={bureauStatusTone(entry.status)}>{entry.status}</Badge>
+                        <span className="ds-muted" style={{ fontSize: 'var(--ds-text-xs)' }}>{entry.source}</span>
+                      </div>
+                    ),
+                    value: [
+                      time(entry.observedAt),
+                      entry.dispatchRef ? `ref ${entry.dispatchRef}` : '',
+                    ].filter(Boolean).join(' · '),
+                    mono: true,
+                  }))}
+                />
+              )}
+            </Card>
+          </Section>
+        )}
       </Stack>
     </>
   );

@@ -76,5 +76,20 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  // UC 05 — Bureau Control Panel
+  getBureauDials: () => request('/bureau/admin/dials'),
+  updateBureauDials: (data) => request('/bureau/admin/dials', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  // UC 04 — Failed-Issue Queue
+  getFailedQueue: () => request('/queue'),
+  retryFailedIssue: (applicationId, correctedAddress) =>
+    request(`/cases/${applicationId}/retry`, {
+      method: 'POST',
+      body: correctedAddress ? JSON.stringify({ correctedAddress }) : undefined,
+    }),
+  // UC 06 — Card Timeline
+  getCardTimeline: (id) => request(`/cases/${id}/timeline`),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
 };

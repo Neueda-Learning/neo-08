@@ -98,7 +98,7 @@ public class CardRecord {
     private Instant issuedAt;
 
     @Column(
-            name = "reason_code",
+            name = "failure_reason",
             length = 64
     )
     private String reasonCode;
