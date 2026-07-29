@@ -5,9 +5,14 @@ import com.neobank.module.dto.CreateIssuingConfigResponse;
 import com.neobank.module.model.IssuingConfig;
 import com.neobank.module.service.IssuingConfigService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/config")
@@ -17,12 +22,14 @@ public class IssuingConfigController {
 
     public IssuingConfigController(
             IssuingConfigService issuingConfigService) {
+
         this.issuingConfigService = issuingConfigService;
     }
 
     @PostMapping
     public ResponseEntity<CreateIssuingConfigResponse> create(
-            @Valid @RequestBody CreateIssuingConfigRequest request) {
+            @Valid @RequestBody
+            CreateIssuingConfigRequest request) {
 
         CreateIssuingConfigResponse response =
                 issuingConfigService.createVersion(request);
@@ -41,5 +48,12 @@ public class IssuingConfigController {
         return ResponseEntity.ok(config);
     }
 
+    @GetMapping("/history")
+    public ResponseEntity<List<IssuingConfig>> getHistory() {
 
+        List<IssuingConfig> history =
+                issuingConfigService.getHistory();
+
+        return ResponseEntity.ok(history);
+    }
 }
