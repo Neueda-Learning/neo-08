@@ -49,6 +49,16 @@ public class CardSearchRepository {
         return rows.stream().findFirst();
     }
 
+    public List<CardCaseSummary> findLatest(int limit) {
+        return jdbc.query(
+                SELECT_COLUMNS + """
+                 ORDER BY issued_at DESC, application_id ASC
+                 LIMIT ?
+                """,
+                ROW_MAPPER,
+                limit);
+    }
+
     public List<CardCaseSummary> findByApplicationIds(List<String> applicationIds, int limit) {
         if (applicationIds.isEmpty()) {
             return List.of();

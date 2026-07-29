@@ -35,8 +35,17 @@ public class CardCaseController {
                 .body(result.cases());
     }
 
-    @GetMapping("/{applicationId}/applicant_info")
-    public ResponseEntity<JsonNode> applicant(@PathVariable String applicationId) {
-        return ResponseEntity.ok(searches.getApplicant(applicationId));
+    @GetMapping("/all")
+    public ResponseEntity<List<CardCaseSummary>> listAll(
+            @RequestParam(defaultValue = "10") int limit) {
+        CardSearchResult result = searches.listAll(limit);
+        return ResponseEntity.ok()
+                .header(HAS_MORE_HEADER, Boolean.toString(result.hasMore()))
+                .body(result.cases());
     }
+
+//    @GetMapping("/{applicationId}/applicant_info")
+//    public ResponseEntity<JsonNode> applicant(@PathVariable String applicationId) {
+//        return ResponseEntity.ok(searches.getApplicant(applicationId));
+//    }
 }

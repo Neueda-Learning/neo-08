@@ -29,7 +29,7 @@ public class CardSearchService {
             return CardSearchResult.empty();
         }
 
-        int limit = Math.max(1, Math.min(requestedLimit, MAX_RESULTS));
+        int limit = normalizeLimit(requestedLimit);
 
         Optional<CardCaseSummary> exactIdMatch = cards.findByApplicationId(query);
         if (exactIdMatch.isPresent()) {
@@ -43,7 +43,19 @@ public class CardSearchService {
         return new CardSearchResult(visible, hasMore);
     }
 
+    public CardSearchResult listAll(int requestedLimit) {
+        int limit = normalizeLimit(requestedLimit);
+        List<CardCaseSummary> matches = cards.findLatest(limit + 1);
+        boolean hasMore = matches.size() > limit;
+        List<CardCaseSummary> visible = hasMore ? matches.subList(0, limit) : matches;
+        return new CardSearchResult(visible, hasMore);
+    }
+
     public JsonNode getApplicant(String applicationId) {
         return applications.getApplication(applicationId);
+    }
+
+    private int normalizeLimit(int requestedLimit) {
+        return Math.max(1, Math.min(requestedLimit, MAX_RESULTS));
     }
 }
